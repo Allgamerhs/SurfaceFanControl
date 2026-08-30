@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>10.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AssemblyName>SurfaceProI2EcFanTest</AssemblyName>
+    <RootNamespace>SurfaceProI2EcFanTest</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SurfaceProFanControl.Core\SurfaceProFanControl.Core.csproj" />
+    <Compile Include="..\..\FanGuardPipeIdentity.shared.cs" Link="FanGuardPipeIdentity.cs" />
+    <Reference Include="System.Management" />
+    <Reference Include="System.ServiceProcess" />
+  </ItemGroup>
+</Project>

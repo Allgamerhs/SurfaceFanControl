@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <LangVersion>10.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <PlatformTarget>x64</PlatformTarget>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\fan.ico</ApplicationIcon>
+    <AssemblyName>SurfaceProFanControl</AssemblyName>
+    <RootNamespace>SurfaceProFanControl</RootNamespace>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <DistributionFlavor Condition="'$(DistributionFlavor)' == ''">Installed</DistributionFlavor>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(DistributionFlavor)' == 'Portable'">
+    <DefineConstants>$(DefineConstants);PORTABLE_MONITOR</DefineConstants>
+    <ApplicationManifest>app.portable.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SurfaceProFanControl.Core\SurfaceProFanControl.Core.csproj" />
+    <ProjectReference Include="..\..\tools\I2EcFanTest\I2EcFanTest.csproj"
+                      ReferenceOutputAssembly="false"
+                      Condition="'$(DistributionFlavor)' != 'Portable'" />
+    <Compile Include="..\..\FanGuardPipeIdentity.shared.cs" Link="Infrastructure\FanGuardPipeIdentity.cs" />
+    <Reference Include="System.Management" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Runtime.Serialization" />
+    <Reference Include="System.ServiceProcess" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\fan.ico" />
+    <Content Include="ThirdParty\WinRing0x64.sys" Condition="'$(DistributionFlavor)' != 'Portable'">
+      <Link>WinRing0x64.sys</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="ThirdParty\THIRD-PARTY-NOTICES.txt" Condition="'$(DistributionFlavor)' != 'Portable'">
+      <Link>THIRD-PARTY-NOTICES.txt</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\FAN-ARASTIRMA-RAPORU.txt" Condition="'$(DistributionFlavor)' != 'Portable'">
+      <Link>FAN-ARASTIRMA-RAPORU.txt</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <Target Name="CopyFanGuard" AfterTargets="Build" Condition="'$(DistributionFlavor)' != 'Portable'">
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\tools\I2EcFanTest\bin\$(Configuration)\net48\SurfaceProI2EcFanTest.exe"
+          DestinationFiles="$(TargetDir)SurfaceProFanGuard.exe" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\tools\I2EcFanTest\bin\$(Configuration)\net48\SurfaceProI2EcFanTest.exe.config"
+          DestinationFiles="$(TargetDir)SurfaceProFanGuard.exe.config" />
+  </Target>
+</Project>

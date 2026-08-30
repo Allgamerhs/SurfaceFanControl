@@ -1,0 +1,35 @@
+# Build and IDE output
+.vs/
+**/bin/
+**/obj/
+artifacts/
+*.user
+*.suo
+
+# Local/target-specific engineering material (never publish)
+Deploy-ToTarget.ps1
+FAN-ARASTIRMA-RAPORU.txt
+tools/*.ps1
+tools/*.cmd
+tools/Acpica/
+tools/EcProbe/
+tools/Firmware/
+tools/I2EcProbe/
+tools/ThirdParty/
+tests/Verify-DeploymentRecoverySafety.ps1
+tests/Verify-Package.ps1
+tests/Verify-RemoteVerificationSafety.ps1
+
+# Known-vulnerable legacy binary is intentionally excluded from public source.
+src/SurfaceProFanControl/ThirdParty/WinRing0x64.sys
+
+# Logs, local settings, signing material, and release credentials
+*.log
+*.pfx
+*.p12
+*.snk
+*.key
+*.pem
+.env
+.env.*
+release-secrets.*

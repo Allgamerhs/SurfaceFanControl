@@ -1,0 +1,57 @@
+name: Build and test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Verify public-source boundary
+        shell: pwsh
+        run: |
+          $trackedDriver = git ls-files '*WinRing0*.sys'
+          if ($trackedDriver) { throw "Known-vulnerable driver is tracked: $trackedDriver" }
+          $privatePatterns = '(^|[^0-9])(10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|192\.168\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3})([^0-9]|$)'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $matches = git grep -n -E $privatePatterns -- .
+          $grepExitCode = $LASTEXITCODE
+          if ($grepExitCode -gt 1) { throw "Public-source scan failed: $grepExitCode" }
+          if ($matches) { throw "Private target data found:`n$matches" }
+
+      - name: Restore
+        run: dotnet restore src/SurfaceProFanControl/SurfaceProFanControl.csproj
+
+      - name: Build portable edition
+        run: dotnet build src/SurfaceProFanControl/SurfaceProFanControl.csproj -c Release -p:DistributionFlavor=Portable --no-restore
+
+      - name: Build and self-test fan guard source
+        shell: pwsh
+        run: |
+          dotnet build tools/I2EcFanTest/I2EcFanTest.csproj -c Release --no-restore
+          & tools/I2EcFanTest/bin/Release/net48/SurfaceProI2EcFanTest.exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Guard self-test failed: $LASTEXITCODE" }
+
+      - name: Run core tests
+        run: dotnet run --project tests/SurfaceProFanControl.Core.Tests/SurfaceProFanControl.Core.Tests.csproj -c Release
+
+      - name: Create portable release candidate
+        shell: pwsh
+        run: ./packaging/New-ReleasePackages.ps1 -OutputDirectory artifacts/release-candidate
+
+      - name: Upload portable candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: surface-fan-control-portable-candidate
+          path: artifacts/release-candidate/*
+          if-no-files-found: error

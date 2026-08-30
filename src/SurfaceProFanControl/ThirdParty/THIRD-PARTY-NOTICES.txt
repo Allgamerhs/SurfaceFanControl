@@ -1,0 +1,20 @@
+Private legacy full-control builds of SurfaceProFanControl may include
+WinRing0x64.sys from the OpenLibSys/WinRing0 distribution as carried by
+OpenHardwareMonitor/NoteBook FanControl. The public portable package and public
+source tree do not include this driver.
+
+OpenHardwareMonitor source code is licensed under the Mozilla Public License
+2.0. WinRing0/OpenLibSys is redistributed under its upstream license terms.
+
+Upstream projects:
+https://openlibsys.org/
+https://github.com/openhardwaremonitor/openhardwaremonitor
+https://github.com/hirschmann/nbfc
+
+In a legacy full-control build, the signed driver is registered as a persistent
+demand-start kernel service. The auto-start LocalSystem SurfaceProFanGuard
+service depends on it, so Windows loads it when the guard starts.
+SurfaceProFanControl pins and verifies the driver SHA-256 before configuration;
+closing the UI does not remove the service. Microsoft classifies WinRing0 as a
+known vulnerable driver (CVE-2020-14979), so these builds are not approved for a
+public release.
