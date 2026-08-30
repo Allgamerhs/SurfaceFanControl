@@ -9,7 +9,7 @@ Windows 2000-style theme, and is available in ten languages.
 | Edition | Installation | Administrator | Hardware writes | Status |
 |---|---|---:|---:|---|
 | Portable Monitor | Extract the ZIP and run | No | No | Ready for public testing |
-| Setup Monitor | Standard setup wizard with selectable app folder | No | No | Ready for public testing |
+| Setup Monitor | Standard setup wizard; defaults to `C:\Program Files\SurfaceFanControl` | Yes | No | Ready for public testing |
 | Setup / Full Control | Privileged setup with hardware backend | Yes | Surface Pro (2013) backend | Public release blocked until the WinRing0 dependency is replaced |
 
 Download the current portable ZIP or standard Windows setup from
@@ -17,18 +17,19 @@ Download the current portable ZIP or standard Windows setup from
 The exact portable ZIP was scanned by VirusTotal with **0/67 detections**; see the
 [VirusTotal report](https://www.virustotal.com/gui/file/727ca12b3e8da508a466e6d5f91cf875ed96cd5d8ac4dc48711009f7b6f2528b/detection).
 The ZIP SHA-256 is `727CA12B3E8DA508A466E6D5F91CF875ED96CD5D8AC4DC48711009F7B6F2528B`.
-The exact setup executable was scanned with **4/70 heuristic detections**; see its
-[VirusTotal report](https://www.virustotal.com/gui/file/ee3ec2a78ce420e77c58a1eb79e782bd25e32590477438baaf92046f5416229d/detection).
+The exact setup executable was scanned with **4/71 heuristic detections**; see its
+[VirusTotal report](https://www.virustotal.com/gui/file/321a7ac69221bf0655c92b651a552beab8c466010e43d14e5970c14bd75f0913/detection).
 Microsoft, Bitdefender, ESET, Kaspersky, Malwarebytes, Avast, and AVG reported it as undetected.
-The setup SHA-256 is `EE3EC2A78CE420E77C58A1EB79E782BD25E32590477438BAAF92046F5416229D`.
+The setup SHA-256 is `321A7AC69221BF0655C92B651A552BEAB8C466010E43D14E5970C14BD75F0913`.
 
 ### Türkçe hızlı başlangıç
 
 - Portable sürüm: ZIP dosyasını yeni bir klasöre çıkarıp `SurfaceProFanControl.exe` dosyasını
   çalıştırın. Kurulum veya yönetici izni istemez ve sisteme sürücü/hizmet eklemez.
 - Kurulumlu izleme sürümü: `SurfaceFanControl-Setup-v1.8.0.exe` dosyasını çalıştırın. Kurulum
-  sihirbazı uygulama klasörünü, masaüstü kısayolunu ve Windows ile başlama seçeneğini sunar.
-  Yönetici izni istemez; sürücü veya hizmet kurmaz ve donanıma yazma yapmaz.
+  sihirbazı varsayılan olarak `C:\Program Files\SurfaceFanControl` klasörünü kullanır; klasörü
+  değiştirme, masaüstü kısayolu ve Windows ile başlama seçeneklerini sunar. Program Files'a
+  kurulum için yönetici onayı ister; sürücü veya hizmet kurmaz ve donanıma yazma yapmaz.
 - İndirdiğiniz dosyanın SHA-256 değerini sürümdeki `SHA256SUMS.txt` ile karşılaştırın.
 
 ## Features

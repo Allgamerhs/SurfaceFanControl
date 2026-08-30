@@ -19,7 +19,7 @@ AppId={{D72FE883-3E55-4B63-A0D9-94D5E12B6047}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=Surface Fan Control contributors
-DefaultDirName={localappdata}\Programs\SurfaceFanControl
+DefaultDirName={autopf}\SurfaceFanControl
 DefaultGroupName={#AppName}
 AllowNoIcons=yes
 ArchitecturesAllowed=x64compatible
@@ -32,7 +32,7 @@ LicenseFile={#SourceRoot}\LICENSE
 MinVersion=10.0.17763
 OutputBaseFilename=SurfaceFanControl-Setup-v{#AppVersion}
 OutputDir={#OutputDir}
-PrivilegesRequired=lowest
+PrivilegesRequired=admin
 SetupIconFile={#SourceRoot}\src\SurfaceProFanControl\Assets\fan.ico
 SolidCompression=no
 UninstallDisplayIcon={app}\{#AppExeName}
@@ -60,8 +60,8 @@ Source: "{#SourceRoot}\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flag
 Source: "{#SourceRoot}\packaging\MONITOR-SETUP-README.txt"; DestDir: "{app}"; DestName: "README.txt"; Flags: ignoreversion
 
 [Registry]
-Root: HKCU; Subkey: "Software\SurfaceFanControl"; ValueType: string; ValueName: "InstallLocation"; ValueData: "{app}"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\SurfaceFanControl"; ValueType: string; ValueName: "Version"; ValueData: "{#AppVersion}"
+Root: HKLM64; Subkey: "Software\SurfaceFanControl"; ValueType: string; ValueName: "InstallLocation"; ValueData: "{app}"; Flags: uninsdeletekey
+Root: HKLM64; Subkey: "Software\SurfaceFanControl"; ValueType: string; ValueName: "Version"; ValueData: "{#AppVersion}"
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"
