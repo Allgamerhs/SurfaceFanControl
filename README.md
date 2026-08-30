@@ -70,20 +70,33 @@ the hardware is unsupported, first confirm that you are using the latest release
 Surface model with the compatibility information above. Do not install random kernel drivers, copy
 drivers from another fan-control project, or force hardware writes intended for a different computer.
 
-For help, open a [GitHub issue](https://github.com/Allgamerhs/SurfaceFanControl/issues) and include:
+For help, open a [GitHub issue](https://github.com/Allgamerhs/SurfaceFanControl/issues). Diagnostic
+logs are important: they show which operation failed and often make the difference between a guess and
+a reproducible fix. Reproduce the problem once, note the approximate time, and attach the relevant files:
 
-- the exact Surface model and generation;
-- Windows edition, version, and architecture;
+- application log: `%LOCALAPPDATA%\SurfaceProFanControl\surface-pro-fan-control.log`;
+- fan-guard service log, when present: `%ProgramData%\SurfaceProFanControl\fan-guard.log`;
+- telemetry history: `%LOCALAPPDATA%\SurfaceProFanControl\telemetry.csv`. Enable **Telemetry logging**
+  in the application and let it run long enough to capture the problem before attaching this file.
+
+Also include the following system and problem details:
+
+- device manufacturer, exact Surface model, and generation;
+- Windows edition, version, OS build, and architecture (`x64` or `ARM64`);
+- BIOS/UEFI firmware version and processor model;
 - Surface Fan Control version and whether you used the Setup or Portable edition;
 - a clear description of the expected behavior and what actually happened;
 - relevant screenshots, error messages, and reproducible steps;
-- whether temperature and RPM readings appear in the application.
+- whether temperature and RPM readings appear in the application, and whether the device was on AC
+  power or battery when the problem occurred.
 
-Before posting, remove device serial numbers, computer names, user names, IP addresses, SMBIOS UUIDs,
-access tokens, and any other private information. Security vulnerabilities should be reported through
-GitHub's private vulnerability reporting feature instead of a public issue. Support for additional
-Surface generations depends on verified hardware documentation and safe testing evidence; a request
-alone cannot make an unknown embedded-controller interface safe to write.
+Logs and system specifications are welcome, but before posting remove device serial numbers, computer
+names, user names, IP addresses, SMBIOS UUIDs, access tokens, and any other private information. Do not
+delete ordinary error messages, timestamps, model names, Windows build information, firmware versions,
+temperature readings, or fan readings: those details are useful for diagnosis. Security vulnerabilities
+should be reported through GitHub's private vulnerability reporting feature instead of a public issue.
+Support for additional Surface generations depends on verified hardware documentation and safe testing
+evidence; a request alone cannot make an unknown embedded-controller interface safe to write.
 
 ## Security warning
 
