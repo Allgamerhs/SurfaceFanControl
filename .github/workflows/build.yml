@@ -28,6 +28,7 @@ jobs:
           $grepExitCode = $LASTEXITCODE
           if ($grepExitCode -gt 1) { throw "Public-source scan failed: $grepExitCode" }
           if ($matches) { throw "Private target data found:`n$matches" }
+          $global:LASTEXITCODE = 0
 
       - name: Restore
         run: dotnet restore src/SurfaceProFanControl/SurfaceProFanControl.csproj
