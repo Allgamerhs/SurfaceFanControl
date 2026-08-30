@@ -1,10 +1,10 @@
 SURFACE FAN CONTROL - PORTABLE MONITOR
 
-1. ZIP dosyasını yeni bir klasöre çıkarın.
-2. SurfaceProFanControl.exe dosyasını çalıştırın.
-3. Kurulum ve yönetici izni gerekmez.
+1. Extract the ZIP into a new folder.
+2. Run SurfaceProFanControl.exe.
+3. No installation or administrator rights are required.
 
-Portable paket sisteme çekirdek sürücüsü veya LocalSystem hizmeti kurmaz. Bu nedenle
-donanıma fan yazma işlemi yapmaz; izleme, profil düzenleme ve arayüz denemesi içindir.
+The portable package installs no kernel driver or LocalSystem service. It performs no
+hardware fan writes and is intended for monitoring, profile editing, and interface testing.
 
-Dosya doğrulaması için GitHub sürümündeki SHA256SUMS.txt ve VIRUSTOTAL.md dosyalarını kullanın.
+Use the SHA-256 value and VirusTotal report published with the GitHub release to verify the file.

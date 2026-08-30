@@ -11,7 +11,7 @@ $root = Split-Path -Parent $PSScriptRoot
 [xml]$props = Get-Content -LiteralPath (Join-Path $root 'Directory.Build.props') -Raw
 $version = [string]$props.Project.PropertyGroup.Version
 if ([string]::IsNullOrWhiteSpace($version)) {
-    throw 'Directory.Build.props içinde sürüm bulunamadı.'
+    throw 'No version was found in Directory.Build.props.'
 }
 
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
@@ -20,7 +20,7 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path -LiteralPath $output) {
     if (@(Get-ChildItem -LiteralPath $output -Force).Count -gt 0) {
-        throw "Çıktı klasörü boş değil; mevcut sürümün üzerine yazılmadı: $output"
+        throw "The output directory is not empty; existing release files were not overwritten: $output"
     }
 }
 else {
@@ -28,7 +28,7 @@ else {
 }
 
 if ($IncludeLegacyFullControlSetup -and -not $AllowKnownVulnerableDriver) {
-    throw 'Eski tam kontrol Setup paketi WinRing0 içeriyor. Yerel deneme için -AllowKnownVulnerableDriver açıkça verilmelidir; genel yayın yasaktır.'
+    throw 'The legacy full-control setup contains WinRing0. Pass -AllowKnownVulnerableDriver explicitly for local testing; public release is prohibited.'
 }
 
 $temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) (
@@ -42,14 +42,14 @@ function Invoke-DotnetBuild {
     & dotnet build (Join-Path $root 'src\SurfaceProFanControl\SurfaceProFanControl.csproj') `
         -c Release -p:DistributionFlavor=$Flavor -o $Destination
     if ($LASTEXITCODE -ne 0) {
-        throw "$Flavor derlemesi başarısız oldu: $LASTEXITCODE"
+        throw "$Flavor build failed with exit code $LASTEXITCODE."
     }
 }
 
 function Require-File {
     param([string]$Path)
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-        throw "Gerekli dosya eksik: $Path"
+        throw "Required file is missing: $Path"
     }
 }
 
@@ -80,7 +80,7 @@ function Get-InnoCompiler {
             return $candidate
         }
     }
-    throw 'Inno Setup derleyicisi ISCC.exe bulunamadı.'
+    throw 'The Inno Setup compiler ISCC.exe was not found.'
 }
 
 $releaseAssets = [Collections.Generic.List[string]]::new()
@@ -92,7 +92,7 @@ try {
 
     foreach ($forbidden in @('WinRing0x64.sys','SurfaceProFanGuard.exe','SurfaceProFanGuard.exe.config')) {
         if (Test-Path -LiteralPath (Join-Path $portableBuild $forbidden)) {
-            throw "Portable derlemede kalıcı sistem bileşeni bulundu: $forbidden"
+            throw "A persistent system component was found in the portable build: $forbidden"
         }
     }
     foreach ($name in @(
@@ -120,7 +120,7 @@ try {
             ("/DOutputDir=" + $monitorInstallerOutput) `
             (Join-Path $PSScriptRoot 'SurfaceFanControl.Monitor.iss')
         if ($LASTEXITCODE -ne 0) {
-            throw "İzleme Setup derlemesi başarısız oldu: $LASTEXITCODE"
+            throw "The monitoring setup build failed with exit code $LASTEXITCODE."
         }
 
         $monitorSetupName = "SurfaceFanControl-Setup-v$version.exe"
@@ -141,10 +141,10 @@ try {
         Require-File $driverPath
         $driverHash = (Get-FileHash -LiteralPath $driverPath -Algorithm SHA256).Hash
         if ($driverHash -ne '11BD2C9F9E2397C9A16E0990E4ED2CF0679498FE0FD418A3DFDAC60B5C160EE5') {
-            throw "WinRing0 sabit SHA-256 değeri uyuşmuyor: $driverHash"
+            throw "The pinned WinRing0 SHA-256 value does not match: $driverHash"
         }
         if ((Get-AuthenticodeSignature -LiteralPath $driverPath).Status -ne 'Valid') {
-            throw 'WinRing0 Authenticode imzası geçerli değil.'
+            throw 'The WinRing0 Authenticode signature is not valid.'
         }
 
         $iscc = Get-InnoCompiler
@@ -155,7 +155,7 @@ try {
             ("/DOutputDir=" + $installerOutput) `
             (Join-Path $PSScriptRoot 'SurfaceFanControl.iss')
         if ($LASTEXITCODE -ne 0) {
-            throw "Inno Setup derlemesi başarısız oldu: $LASTEXITCODE"
+            throw "The Inno Setup build failed with exit code $LASTEXITCODE."
         }
 
         $setupName = "SurfaceFanControl-FullControl-Setup-v$version.exe"
@@ -184,16 +184,16 @@ try {
 
     $virusTotalRows = foreach ($asset in $releaseAssets | Sort-Object) {
         $hash = (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash.ToLowerInvariant()
-        '| `{0}` | `{1}` | [VirusTotal raporu](https://www.virustotal.com/gui/file/{1}) |' -f `
+        '| `{0}` | `{1}` | [VirusTotal report](https://www.virustotal.com/gui/file/{1}) |' -f `
             (Split-Path -Leaf $asset), $hash
     }
     $virusTotal = @(
         '# VirusTotal reports',
         '',
-        'Bu bağlantılar yalnızca nihai dosyalar VirusTotal''a gönderildikten sonra sonuç gösterir.',
-        'Bir rapor, dosyanın güvenli olduğunu garanti etmez.',
+        'These links show results only after the final files have been submitted to VirusTotal.',
+        'A report is supporting evidence and does not guarantee that a file is safe.',
         '',
-        '| Dosya | SHA-256 | Rapor |',
+        '| File | SHA-256 | Report |',
         '|---|---|---|',
         $virusTotalRows
     )

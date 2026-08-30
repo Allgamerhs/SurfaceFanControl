@@ -15,22 +15,22 @@ Windows 2000-style theme, and is available in ten languages.
 Download the current portable ZIP or standard Windows setup from
 [GitHub Releases](https://github.com/Allgamerhs/SurfaceFanControl/releases/tag/v1.8.0).
 The exact portable ZIP was scanned by VirusTotal with **0/67 detections**; see the
-[VirusTotal report](https://www.virustotal.com/gui/file/727ca12b3e8da508a466e6d5f91cf875ed96cd5d8ac4dc48711009f7b6f2528b/detection).
-The ZIP SHA-256 is `727CA12B3E8DA508A466E6D5F91CF875ED96CD5D8AC4DC48711009F7B6F2528B`.
+[VirusTotal report](https://www.virustotal.com/gui/file/649e48d440314364d2116727f0f6c7ebf9834414b5181bcc5ae3833c06a93282/detection).
+The ZIP SHA-256 is `649E48D440314364D2116727F0F6C7EBF9834414B5181BCC5AE3833C06A93282`.
 The exact setup executable was scanned with **4/71 heuristic detections**; see its
-[VirusTotal report](https://www.virustotal.com/gui/file/321a7ac69221bf0655c92b651a552beab8c466010e43d14e5970c14bd75f0913/detection).
+[VirusTotal report](https://www.virustotal.com/gui/file/d7660930ef64d0f28c738962aa4aa73ab0a85273f0793a4be0967e132c091713/detection).
 Microsoft, Bitdefender, ESET, Kaspersky, Malwarebytes, Avast, and AVG reported it as undetected.
-The setup SHA-256 is `321A7AC69221BF0655C92B651A552BEAB8C466010E43D14E5970C14BD75F0913`.
+The setup SHA-256 is `D7660930EF64D0F28C738962AA4AA73AB0A85273F0793A4BE0967E132C091713`.
 
-### Türkçe hızlı başlangıç
+### Quick start
 
-- Portable sürüm: ZIP dosyasını yeni bir klasöre çıkarıp `SurfaceProFanControl.exe` dosyasını
-  çalıştırın. Kurulum veya yönetici izni istemez ve sisteme sürücü/hizmet eklemez.
-- Kurulumlu izleme sürümü: `SurfaceFanControl-Setup-v1.8.0.exe` dosyasını çalıştırın. Kurulum
-  sihirbazı varsayılan olarak `C:\Program Files\SurfaceFanControl` klasörünü kullanır; klasörü
-  değiştirme, masaüstü kısayolu ve Windows ile başlama seçeneklerini sunar. Program Files'a
-  kurulum için yönetici onayı ister; sürücü veya hizmet kurmaz ve donanıma yazma yapmaz.
-- İndirdiğiniz dosyanın SHA-256 değerini sürümdeki `SHA256SUMS.txt` ile karşılaştırın.
+- Portable edition: extract the ZIP into a new folder and run `SurfaceProFanControl.exe`. It
+  requires no installation or administrator rights and installs no driver or service.
+- Setup edition: run `SurfaceFanControl-Setup-v1.8.0.exe`. The wizard defaults to
+  `C:\Program Files\SurfaceFanControl` and lets the user select another folder, create a desktop
+  shortcut, and enable start with Windows. Installing under Program Files requires administrator
+  approval. The public setup installs no driver or service and performs no hardware writes.
+- Compare the downloaded file's SHA-256 value with the release information before running it.
 
 ## Features
 
@@ -84,8 +84,3 @@ treated as a public release while the known-vulnerable driver is present.
 
 Application source is available under the [MIT License](LICENSE). Third-party components retain their
 own license terms. Contributions must follow [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Downloads / İndirilenler
-
-- [SurfaceFanControl-Setup-v1.8.0.exe](https://github.com/Allgamerhs/SurfaceFanControl/releases/download/v1.8.0/SurfaceFanControl-Setup-v1.8.0.exe) — standart Windows kurulumu
-- [SurfaceFanControl-Portable-v1.8.0.zip](https://github.com/Allgamerhs/SurfaceFanControl/releases/download/v1.8.0/SurfaceFanControl-Portable-v1.8.0.zip) — kurulum gerektirmeyen portable sürüm

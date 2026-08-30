@@ -50,7 +50,7 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
-Name: "autostart"; Description: "Windows ile başlat"; GroupDescription: "Başlangıç seçenekleri"
+Name: "autostart"; Description: "Start with Windows"; GroupDescription: "Startup options"
 
 [Files]
 Source: "{#BuildDir}\SurfaceProFanControl.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -68,7 +68,7 @@ Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Parameters: "--enable-startup"; Description: "Windows ile başlangıcı ayarla"; Tasks: autostart; Flags: runhidden waituntilterminated
+Filename: "{app}\{#AppExeName}"; Parameters: "--enable-startup"; Description: "Configure start with Windows"; Tasks: autostart; Flags: runhidden waituntilterminated
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]

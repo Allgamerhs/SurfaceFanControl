@@ -1,8 +1,8 @@
-SURFACE FAN CONTROL - KURULU SÜRÜM
+SURFACE FAN CONTROL - LEGACY FULL-CONTROL EDITION
 
-Setup programı kurulum klasörünü, masaüstü kısayolunu ve Windows ile başlama seçeneğini
-seçtirir. Kullanıcı arayüzü istenen diske kurulabilir. Yönetici yetkili donanım hizmeti ve
-sürücü, güvenlik nedeniyle kullanıcı tarafından yazılamayan ortak sistem klasöründe tutulur.
+The setup program lets the user select the installation folder, desktop shortcut, and
+start-with-Windows option. The interface can be installed on any drive. The privileged
+hardware service and driver are stored in a protected system directory.
 
-UYARI: Bilinen savunmasız WinRing0 sürücüsü kaldırılana kadar bu paket herkese açık bir
-GitHub sürümü olarak yayımlanmamalıdır.
+WARNING: Do not publish this package as a public GitHub release until the known-vulnerable
+WinRing0 driver dependency has been removed.
