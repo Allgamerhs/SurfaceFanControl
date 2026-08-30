@@ -84,3 +84,8 @@ treated as a public release while the known-vulnerable driver is present.
 
 Application source is available under the [MIT License](LICENSE). Third-party components retain their
 own license terms. Contributions must follow [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Downloads / İndirilenler
+
+- [SurfaceFanControl-Setup-v1.8.0.exe](https://github.com/Allgamerhs/SurfaceFanControl/releases/download/v1.8.0/SurfaceFanControl-Setup-v1.8.0.exe) — standart Windows kurulumu
+- [SurfaceFanControl-Portable-v1.8.0.zip](https://github.com/Allgamerhs/SurfaceFanControl/releases/download/v1.8.0/SurfaceFanControl-Portable-v1.8.0.zip) — kurulum gerektirmeyen portable sürüm
