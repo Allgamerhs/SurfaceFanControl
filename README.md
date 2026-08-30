@@ -56,6 +56,35 @@ a dirty-state recovery marker, a bounded watchdog, and mandatory firmware-AUTO r
 serial numbers, computer names, SMBIOS UUIDs, local IP addresses, firmware images, and remote deployment
 scripts are intentionally excluded from this public source tree.
 
+## Compatibility and support
+
+Surface Fan Control is designed primarily for Microsoft Surface devices. The public monitoring
+editions may start on other Windows computers, but this does not mean that their embedded controller,
+temperature sensors, fan tachometer, or fan-control interface is supported. Hardware writes are enabled
+only for a device that passes the project's exact model and controller allowlist. At present, the
+verified write backend targets the original Microsoft Surface Pro reported as
+`Microsoft Corporation / Surface with Windows 8 Pro`. All other devices remain monitoring-only.
+
+If temperature or RPM values are unavailable, the fan does not react, or the application reports that
+the hardware is unsupported, first confirm that you are using the latest release and compare your exact
+Surface model with the compatibility information above. Do not install random kernel drivers, copy
+drivers from another fan-control project, or force hardware writes intended for a different computer.
+
+For help, open a [GitHub issue](https://github.com/Allgamerhs/SurfaceFanControl/issues) and include:
+
+- the exact Surface model and generation;
+- Windows edition, version, and architecture;
+- Surface Fan Control version and whether you used the Setup or Portable edition;
+- a clear description of the expected behavior and what actually happened;
+- relevant screenshots, error messages, and reproducible steps;
+- whether temperature and RPM readings appear in the application.
+
+Before posting, remove device serial numbers, computer names, user names, IP addresses, SMBIOS UUIDs,
+access tokens, and any other private information. Security vulnerabilities should be reported through
+GitHub's private vulnerability reporting feature instead of a public issue. Support for additional
+Surface generations depends on verified hardware documentation and safe testing evidence; a request
+alone cannot make an unknown embedded-controller interface safe to write.
+
 ## Security warning
 
 The private engineering build historically used `WinRing0x64.sys`. Microsoft classifies WinRing0 as a
