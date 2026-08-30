@@ -2,8 +2,9 @@
 
 ## Supported releases
 
-Only the latest GitHub release is supported. The portable monitoring edition does not install or
-load a kernel driver. Release hashes and VirusTotal report links are published with every release.
+Only the latest GitHub release is supported. The portable and standard-setup monitoring editions
+do not install or load a kernel driver or privileged service. Release hashes and VirusTotal report
+links are published with every release.
 
 ## Kernel-driver status
 
@@ -21,4 +22,6 @@ in a public issue.
 ## Release verification
 
 Compare the downloaded file against `SHA256SUMS.txt`, then open the matching VirusTotal report from
-`VIRUSTOTAL.md`. VirusTotal is supporting evidence, not a guarantee that software is safe.
+`VIRUSTOTAL.md`. The unsigned setup may receive heuristic or machine-learning detections because it
+extracts application files and can create a startup entry. VirusTotal is supporting evidence, not a
+guarantee that software is safe.

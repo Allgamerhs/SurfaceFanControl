@@ -9,20 +9,26 @@ Windows 2000-style theme, and is available in ten languages.
 | Edition | Installation | Administrator | Hardware writes | Status |
 |---|---|---:|---:|---|
 | Portable Monitor | Extract the ZIP and run | No | No | Ready for public testing |
-| Setup / Full Control | Standard setup wizard with selectable app folder | Yes | Surface Pro (2013) backend | Public release blocked until the WinRing0 dependency is replaced |
+| Setup Monitor | Standard setup wizard with selectable app folder | No | No | Ready for public testing |
+| Setup / Full Control | Privileged setup with hardware backend | Yes | Surface Pro (2013) backend | Public release blocked until the WinRing0 dependency is replaced |
 
-Download the current portable build from [GitHub Releases](https://github.com/Allgamerhs/SurfaceFanControl/releases/tag/v1.8.0).
-The exact release ZIP was scanned by VirusTotal with **0/67 detections**; see the
+Download the current portable ZIP or standard Windows setup from
+[GitHub Releases](https://github.com/Allgamerhs/SurfaceFanControl/releases/tag/v1.8.0).
+The exact portable ZIP was scanned by VirusTotal with **0/67 detections**; see the
 [VirusTotal report](https://www.virustotal.com/gui/file/727ca12b3e8da508a466e6d5f91cf875ed96cd5d8ac4dc48711009f7b6f2528b/detection).
-Its SHA-256 is `727CA12B3E8DA508A466E6D5F91CF875ED96CD5D8AC4DC48711009F7B6F2528B`.
+The ZIP SHA-256 is `727CA12B3E8DA508A466E6D5F91CF875ED96CD5D8AC4DC48711009F7B6F2528B`.
+The exact setup executable was scanned with **4/70 heuristic detections**; see its
+[VirusTotal report](https://www.virustotal.com/gui/file/ee3ec2a78ce420e77c58a1eb79e782bd25e32590477438baaf92046f5416229d/detection).
+Microsoft, Bitdefender, ESET, Kaspersky, Malwarebytes, Avast, and AVG reported it as undetected.
+The setup SHA-256 is `EE3EC2A78CE420E77C58A1EB79E782BD25E32590477438BAAF92046F5416229D`.
 
 ### Türkçe hızlı başlangıç
 
 - Portable sürüm: ZIP dosyasını yeni bir klasöre çıkarıp `SurfaceProFanControl.exe` dosyasını
   çalıştırın. Kurulum veya yönetici izni istemez ve sisteme sürücü/hizmet eklemez.
-- Kurulumlu sürüm: Kurulum sihirbazı uygulama klasörünü, masaüstü kısayolunu ve Windows ile
-  başlama seçeneğini sunar. Ayrıcalıklı hizmet dosyaları güvenlik nedeniyle korumalı sistem
-  klasöründe tutulur.
+- Kurulumlu izleme sürümü: `SurfaceFanControl-Setup-v1.8.0.exe` dosyasını çalıştırın. Kurulum
+  sihirbazı uygulama klasörünü, masaüstü kısayolunu ve Windows ile başlama seçeneğini sunar.
+  Yönetici izni istemez; sürücü veya hizmet kurmaz ve donanıma yazma yapmaz.
 - İndirdiğiniz dosyanın SHA-256 değerini sürümdeki `SHA256SUMS.txt` ile karşılaştırın.
 
 ## Features
@@ -66,11 +72,12 @@ dotnet build .\src\SurfaceProFanControl\SurfaceProFanControl.csproj -c Release -
 dotnet build .\tools\I2EcFanTest\I2EcFanTest.csproj -c Release
 & .\tools\I2EcFanTest\bin\Release\net48\SurfaceProI2EcFanTest.exe --self-test
 dotnet run --project .\tests\SurfaceProFanControl.Core.Tests\SurfaceProFanControl.Core.Tests.csproj -c Release
-& .\packaging\New-ReleasePackages.ps1 -OutputDirectory .\artifacts\release-candidate
+& .\packaging\New-ReleasePackages.ps1 -OutputDirectory .\artifacts\release-candidate -IncludeSetup
 ```
 
-The setup definition is in `packaging/SurfaceFanControl.iss`. It is deliberately guarded and cannot
-be treated as a public release while the known-vulnerable legacy driver is present.
+The public monitoring setup definition is in `packaging/SurfaceFanControl.Monitor.iss`. The legacy
+full-control definition in `packaging/SurfaceFanControl.iss` is deliberately guarded and cannot be
+treated as a public release while the known-vulnerable driver is present.
 
 ## License
 

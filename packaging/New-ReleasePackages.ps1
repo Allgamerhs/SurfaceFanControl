@@ -2,6 +2,7 @@
 param(
     [string]$OutputDirectory,
     [switch]$IncludeSetup,
+    [switch]$IncludeLegacyFullControlSetup,
     [switch]$AllowKnownVulnerableDriver
 )
 
@@ -26,8 +27,8 @@ else {
     New-Item -ItemType Directory -Path $output | Out-Null
 }
 
-if ($IncludeSetup -and -not $AllowKnownVulnerableDriver) {
-    throw 'Setup paketi WinRing0 içeriyor. Yerel deneme için -AllowKnownVulnerableDriver açıkça verilmelidir; genel yayın yasaktır.'
+if ($IncludeLegacyFullControlSetup -and -not $AllowKnownVulnerableDriver) {
+    throw 'Eski tam kontrol Setup paketi WinRing0 içeriyor. Yerel deneme için -AllowKnownVulnerableDriver açıkça verilmelidir; genel yayın yasaktır.'
 }
 
 $temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) (
@@ -68,11 +69,12 @@ function Get-InnoCompiler {
     $command = Get-Command iscc.exe -ErrorAction SilentlyContinue
     if ($command) { return $command.Source }
     foreach ($candidate in @(
-        (Join-Path $root 'artifacts\build-tools\InnoSetup7\ISCC.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe'),
         (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'),
         (Join-Path $env:ProgramFiles 'Inno Setup 6\ISCC.exe'),
         (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 7\ISCC.exe'),
-        (Join-Path $env:ProgramFiles 'Inno Setup 7\ISCC.exe'))) {
+        (Join-Path $env:ProgramFiles 'Inno Setup 7\ISCC.exe'),
+        (Join-Path $root 'artifacts\build-tools\InnoSetup7\ISCC.exe'))) {
         if (-not [string]::IsNullOrWhiteSpace($candidate) -and
             (Test-Path -LiteralPath $candidate -PathType Leaf)) {
             return $candidate
@@ -107,6 +109,29 @@ try {
     $releaseAssets.Add($portableZip)
 
     if ($IncludeSetup) {
+        $monitorInstallerOutput = Join-Path $temporaryRoot 'monitor-installer-output'
+        New-Item -ItemType Directory -Path $monitorInstallerOutput | Out-Null
+
+        $iscc = Get-InnoCompiler
+        & $iscc `
+            ("/DAppVersion=" + $version) `
+            ("/DBuildDir=" + $portableBuild) `
+            ("/DSourceRoot=" + $root) `
+            ("/DOutputDir=" + $monitorInstallerOutput) `
+            (Join-Path $PSScriptRoot 'SurfaceFanControl.Monitor.iss')
+        if ($LASTEXITCODE -ne 0) {
+            throw "İzleme Setup derlemesi başarısız oldu: $LASTEXITCODE"
+        }
+
+        $monitorSetupName = "SurfaceFanControl-Setup-v$version.exe"
+        $monitorSetupCompiled = Join-Path $monitorInstallerOutput $monitorSetupName
+        Require-File $monitorSetupCompiled
+        $monitorSetupAsset = Join-Path $output $monitorSetupName
+        Copy-Item -LiteralPath $monitorSetupCompiled -Destination $monitorSetupAsset
+        $releaseAssets.Add($monitorSetupAsset)
+    }
+
+    if ($IncludeLegacyFullControlSetup) {
         $installedBuild = Join-Path $temporaryRoot 'installed-build'
         $installerOutput = Join-Path $temporaryRoot 'installer-output'
         Invoke-DotnetBuild 'Installed' $installedBuild
@@ -133,7 +158,7 @@ try {
             throw "Inno Setup derlemesi başarısız oldu: $LASTEXITCODE"
         }
 
-        $setupName = "SurfaceFanControl-Setup-v$version.exe"
+        $setupName = "SurfaceFanControl-FullControl-Setup-v$version.exe"
         $setupCompiled = Join-Path $installerOutput $setupName
         Require-File $setupCompiled
         $setupAsset = Join-Path $output $setupName
@@ -145,7 +170,7 @@ try {
         Copy-ReleaseFile $setupCompiled $setupStage
         Copy-ReleaseFile (Join-Path $root 'LICENSE') $setupStage 'LICENSE.txt'
         Copy-ReleaseFile (Join-Path $PSScriptRoot 'SETUP-README.txt') $setupStage 'README.txt'
-        $setupZip = Join-Path $output ("SurfaceFanControl-Setup-v$version.zip")
+        $setupZip = Join-Path $output ("SurfaceFanControl-FullControl-Setup-v$version.zip")
         Compress-Archive -Path (Join-Path $setupStage '*') -DestinationPath $setupZip -CompressionLevel Optimal
         $releaseAssets.Add($setupZip)
     }
@@ -183,6 +208,7 @@ try {
         OutputDirectory = $output
         Portable = Split-Path -Leaf $portableZip
         SetupIncluded = [bool]$IncludeSetup
+        LegacyFullControlSetupIncluded = [bool]$IncludeLegacyFullControlSetup
         Assets = $releaseAssets.Count
     }
 }
