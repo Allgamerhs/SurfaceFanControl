@@ -236,8 +236,8 @@ internal static class Program
     private static void WriteHeader(TargetIdentity target, PnpIdentity identity, string mode)
     {
         Console.WriteLine("MODE=" + mode);
-        Console.WriteLine("COMPUTER=" + target.ComputerName);
-        Console.WriteLine("UUID=" + target.Uuid);
+        Console.WriteLine("MANUFACTURER=" + target.Manufacturer);
+        Console.WriteLine("MODEL=" + target.Model);
         Console.WriteLine("PNPCFG_BASE=0x{0:X4}", identity.BasePort);
         Console.WriteLine("CHIP_ID={0:X2}{1:X2}", identity.Id1, identity.Id2);
         Console.WriteLine("CHIP_VERSION=0x{0:X2}", identity.Version);
@@ -1358,26 +1358,20 @@ internal sealed class WinRingPortIo : IPortIo
 
 internal sealed class TargetIdentity
 {
-    private TargetIdentity(string computerName, string manufacturer, string model, string uuid)
+    private TargetIdentity(string manufacturer, string model)
     {
-        ComputerName = computerName;
         Manufacturer = manufacturer;
         Model = model;
-        Uuid = uuid;
     }
 
-    public string ComputerName { get; }
     public string Manufacturer { get; }
     public string Model { get; }
-    public string Uuid { get; }
 
     public static TargetIdentity Read()
     {
         return new TargetIdentity(
-            Environment.MachineName,
             ReadFirst("Win32_ComputerSystem", "Manufacturer"),
-            ReadFirst("Win32_ComputerSystem", "Model"),
-            ReadFirst("Win32_ComputerSystemProduct", "UUID"));
+            ReadFirst("Win32_ComputerSystem", "Model"));
     }
 
     public bool IsExpected(string manufacturer, string model)
@@ -1387,7 +1381,7 @@ internal sealed class TargetIdentity
 
     public string ToDisplayString()
     {
-        return string.Format("Computer={0}; Manufacturer={1}; Model={2}; UUID={3}", ComputerName, Manufacturer, Model, Uuid);
+        return $"Manufacturer={Manufacturer}, Model={Model}";
     }
 
     private static string ReadFirst(string className, string property)

@@ -45,4 +45,14 @@ $slot.SetValue($service, $slow.Task)
 Assert (31 -eq $multi.Invoke($service, @([long](7 * $hz)))) 'A recent sample vanished during a new query.'
 Assert ($null -eq $multi.Invoke($service, @([long](12 * $hz)))) 'An expired sample was shown as current.'
 Assert ([object]::ReferenceEquals($slow.Task,$slot.GetValue($service))) 'A second query replaced the pending query.'
-'PASS: CPU deltas, missing and stale measurements, and nonblocking multi-group sampling.'
+# Older callers can still supply device identifiers. The public diagnostic report must omit them.
+$corePath = Join-Path (Split-Path $assembly.Location) 'SurfaceProFanControl.Core.dll'
+$null = [Reflection.Assembly]::LoadFrom($corePath)
+$identity = [SurfaceProFanControl.Core.HardwareIdentity]::new('Example', 'Model', 'private-example-uuid', '1.2', 'private-example-serial')
+$device = [SurfaceProFanControl.Infrastructure.DeviceSnapshot]::new($identity, 'private-example-host', 'CPU', 'Windows')
+$sample = [SurfaceProFanControl.Infrastructure.TelemetrySnapshot]::new(45, 86, 25, $true, 60, [datetime]::Now)
+$json = [SurfaceProFanControl.Infrastructure.ProbeReport]::ToJson($device, $sample)
+$report = $json | ConvertFrom-Json
+Assert ($report.manufacturer -eq 'Example' -and $report.model -eq 'Model' -and $report.biosVersion -eq '1.2' -and $report.temperatureCelsius -eq 45) 'Public probe lost expected diagnostics.'
+Assert ($json -notmatch 'private-example|"(uuid|serialNumber|computerName)"') 'Public probe disclosed a private identifier.'
+'PASS: CPU deltas, stale measurements, nonblocking multi-group sampling, and diagnostic privacy.'

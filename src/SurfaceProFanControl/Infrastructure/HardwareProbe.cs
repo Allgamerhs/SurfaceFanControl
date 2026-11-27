@@ -10,14 +10,12 @@ namespace SurfaceProFanControl.Infrastructure
         {
             var manufacturer = ReadFirst("Win32_ComputerSystem", "Manufacturer");
             var model = ReadFirst("Win32_ComputerSystem", "Model");
-            var uuid = ReadFirst("Win32_ComputerSystemProduct", "UUID");
             var bios = ReadFirst("Win32_BIOS", "SMBIOSBIOSVersion");
-            var serial = ReadFirst("Win32_BIOS", "SerialNumber");
             var processor = ReadFirst("Win32_Processor", "Name");
             var os = ReadFirst("Win32_OperatingSystem", "Caption") + " " + ReadFirst("Win32_OperatingSystem", "Version");
 
-            var identity = new HardwareIdentity(manufacturer, model, uuid, bios, serial);
-            return new DeviceSnapshot(identity, Environment.MachineName, processor, os.Trim());
+            var identity = new HardwareIdentity(manufacturer, model, bios);
+            return new DeviceSnapshot(identity, processor, os.Trim());
         }
 
         private static string ReadFirst(string className, string property)

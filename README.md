@@ -1,50 +1,38 @@
-# Surface Fan Control 1.8.0
+# Surface Fan Control 1.9.0
 
-Surface Fan Control is an open-source Windows desktop application for compact hardware monitoring
-and carefully allowlisted fan control backends. The interface is intentionally small, uses a classic
-Windows 2000-style theme, and is available in ten languages.
+Surface Fan Control is an open-source Windows desktop app for monitoring temperature, CPU load,
+battery level and AC power. Its public downloads display the readings available through Windows.
+The source also includes a fan-control backend for the first-generation Surface Pro.
 
 ## Download editions
 
-| Edition | Installation | Administrator | Hardware writes | Status |
-|---|---|---:|---:|---|
-| Portable Monitor | Extract the ZIP and run | No | No | Ready for public testing |
-| Setup Monitor | Standard setup wizard; defaults to `C:\Program Files\SurfaceFanControl` | Yes | No | Ready for public testing |
-| Setup / Full Control | Privileged setup with hardware backend | Yes | Surface Pro (2013) backend | Public release blocked until the WinRing0 dependency is replaced |
+Both downloads run the same monitoring app on x64 Windows. They do not install a fan service or
+kernel driver. Fan-mode controls and fan RPM measurement are disabled in these editions.
 
-Download the current portable ZIP or standard Windows setup from
-[GitHub Releases](https://github.com/Allgamerhs/SurfaceFanControl/releases/tag/v1.8.0).
-The exact portable ZIP was scanned by VirusTotal with **0/67 detections**; see the
-[VirusTotal report](https://www.virustotal.com/gui/file/649e48d440314364d2116727f0f6c7ebf9834414b5181bcc5ae3833c06a93282/detection).
-The ZIP SHA-256 is `649E48D440314364D2116727F0F6C7EBF9834414B5181BCC5AE3833C06A93282`.
-The exact setup executable was scanned with **4/71 heuristic detections**; see its
-[VirusTotal report](https://www.virustotal.com/gui/file/d7660930ef64d0f28c738962aa4aa73ab0a85273f0793a4be0967e132c091713/detection).
-Microsoft, Bitdefender, ESET, Kaspersky, Malwarebytes, Avast, and AVG reported it as undetected.
-The setup SHA-256 is `D7660930EF64D0F28C738962AA4AA73AB0A85273F0793A4BE0967E132C091713`.
+| Download | How to start |
+|---|---|
+| [Portable Monitor ZIP](https://github.com/Allgamerhs/SurfaceFanControl/releases/download/v1.9.0/SurfaceFanControl-Portable-v1.9.0.zip) | Extract the ZIP and run `SurfaceProFanControl.exe`. No installation or administrator rights required. |
+| [Monitor Setup for Windows](https://github.com/Allgamerhs/SurfaceFanControl/releases/download/v1.9.0/SurfaceFanControl-Setup-v1.9.0.exe) | Run the installer. It defaults to `C:\Program Files\SurfaceFanControl` and offers installation folder, shortcut and startup options. |
 
-### Quick start
-
-- Portable edition: extract the ZIP into a new folder and run `SurfaceProFanControl.exe`. It
-  requires no installation or administrator rights and installs no driver or service.
-- Setup edition: run `SurfaceFanControl-Setup-v1.8.0.exe`. The wizard defaults to
-  `C:\Program Files\SurfaceFanControl` and lets the user select another folder, create a desktop
-  shortcut, and enable start with Windows. Installing under Program Files requires administrator
-  approval. The public setup installs no driver or service and performs no hardware writes.
-- Compare the downloaded file's SHA-256 value with the release information before running it.
+Before running the download, compare its SHA-256 with the entry for that filename in
+[SHA256SUMS.txt](https://github.com/Allgamerhs/SurfaceFanControl/releases/download/v1.9.0/SHA256SUMS.txt).
 
 ## Features
 
-- Firmware AUTO and verified maximum modes on explicitly supported hardware.
-- Fixed maximum, timed maximum, temperature curve, hysteresis, minimum dwell time, rapid-rise boost,
-  AC/battery profiles, startup delay, and critical-temperature protection.
-- Live temperature, RPM measurement, session minimum/maximum, trend, a 60-sample chart, and bounded
-  CSV telemetry.
-- Profiles that can be imported/exported as bounded JSON.
-- Tray controls, global shortcuts, start-with-Windows, start minimized, always-on-top, and close to tray.
-- Turkish, English, German, Italian, Spanish, Arabic, Simplified Chinese, Japanese, Russian, and Polish.
+- View temperature history for the last minute and optionally log telemetry to a local CSV file.
+  An expired temperature clears from the live display after 20 seconds without a new reading.
+- Import and export settings profiles as JSON.
+- Use the system tray, start with Windows, start minimized, keep the window on top, or close to tray.
+- The interface is available in ten languages, including Turkish, English, German, Italian, Spanish,
+  Arabic, Simplified Chinese, Japanese, Russian, and Polish.
 - Classic fixed-size `480×410` interface with a dedicated fan icon.
 
 ## Hardware boundary
+
+The full-control source supports firmware AUTO, fixed and timed maximum cooling, temperature curves,
+AC/battery profiles, and critical-temperature protection. Its Status tab shows both measured fan
+speeds and the time of the last successful reading. RPM values expire after 20 seconds. Distribution
+of the full-control installer is blocked pending a replacement for its driver dependency.
 
 The current write backend targets the original Microsoft Surface Pro model reported as
 `Microsoft Corporation / Surface with Windows 8 Pro`. Before any write, the guard independently

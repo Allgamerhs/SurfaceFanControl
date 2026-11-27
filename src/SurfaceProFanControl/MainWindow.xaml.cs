@@ -99,7 +99,7 @@ namespace SurfaceProFanControl
             {
                 _loadingSettings = false;
             }
-            DeviceText.Text = device.ComputerName + " • " + device.Identity.Model;
+            DeviceText.Text = device.Identity.Manufacturer + " • " + device.Identity.Model;
             _profileArmUtc = DateTime.UtcNow.AddSeconds(startupLaunch ? _settings.StartupDelaySeconds : 0);
             ApplySettingsToControls();
             ApplyLocalization();
