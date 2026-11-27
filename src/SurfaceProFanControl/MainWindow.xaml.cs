@@ -38,7 +38,7 @@ namespace SurfaceProFanControl
         private readonly TelemetryService _telemetry = new TelemetryService();
         private readonly TelemetryHistoryStore _history = new TelemetryHistoryStore();
         private readonly UserSettingsStore _settingsStore = new UserSettingsStore();
-        private readonly UserSettings _settings;
+        private UserSettings _settings;
         private readonly HardwareSupport _hardwareSupport;
         private readonly DispatcherTimer _timer;
         private readonly List<(DateTime TimeUtc, double? Celsius)> _temperatureHistory = new List<(DateTime, double?)>();
@@ -1198,11 +1198,13 @@ namespace SurfaceProFanControl
             if (dialog.ShowDialog(this) != true) return;
             try
             {
-                ProfileExchange.Import(dialog.FileName, _settings);
+                var imported = _settings.Copy();
+                ProfileExchange.Import(dialog.FileName, imported);
+                _settingsStore.Save(imported);
+                _settings = imported;
                 MarkPolicySelectionChanged();
                 ApplySettingsToControls();
                 ApplyLocalization();
-                SaveSettings();
                 StatusText.Text = T("ImportProfile") + ": " + Path.GetFileName(dialog.FileName);
             }
             catch (Exception ex)

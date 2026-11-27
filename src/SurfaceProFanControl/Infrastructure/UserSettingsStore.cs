@@ -24,6 +24,8 @@ namespace SurfaceProFanControl.Infrastructure
         public int CurveDwellSeconds { get; set; } = 60;
         public bool PredictiveCoolingEnabled { get; set; } = true;
 
+        internal UserSettings Copy() => (UserSettings)MemberwiseClone();
+
         internal void Normalize()
         {
             CoolingAggressivenessPercent = Math.Max(0, Math.Min(100, CoolingAggressivenessPercent));
