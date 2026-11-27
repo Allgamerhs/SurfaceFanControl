@@ -82,8 +82,8 @@
                     </Grid>
                     <Grid Grid.Row="4" Margin="0,4,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <TextBlock x:Name="VerifiedPeakLabel" Text="Verified peak RPM:" VerticalAlignment="Center" />
-                        <TextBlock x:Name="VerifiedPeakRpmText" Grid.Column="1" Text="10,219 / 9,756" FontWeight="Bold" VerticalAlignment="Center" Margin="5,0" />
+                        <TextBlock x:Name="VerifiedPeakLabel" Text="Session peak RPM:" VerticalAlignment="Center" />
+                        <TextBlock x:Name="VerifiedPeakRpmText" Grid.Column="1" Text="-- / --" FontWeight="Bold" VerticalAlignment="Center" Margin="5,0" />
                         <TextBlock x:Name="BoostCountdownText" Grid.Column="2" Text="Boost ready" VerticalAlignment="Center" Foreground="#404040" />
                     </Grid>
                 </Grid>
@@ -128,6 +128,7 @@
                                 <Line X1="0" Y1="35" X2="440" Y2="35" Stroke="#D0D0D0" StrokeThickness="1" />
                                 <Line X1="0" Y1="11" X2="440" Y2="11" Stroke="#D0D0D0" StrokeThickness="1" />
                                 <Polyline x:Name="CurvePreviewLine" Stroke="#000000" StrokeThickness="2" />
+                                <Line x:Name="CurveReturnThreshold" Y1="11" Y2="35" Stroke="#555555" StrokeThickness="2" StrokeDashArray="2,2" />
                                 <Line x:Name="CurveCurrentMarker" Y1="2" Y2="43" Stroke="#808080" StrokeThickness="1" StrokeDashArray="2,2" Visibility="Collapsed" />
                             </Canvas>
                         </Grid>
@@ -187,10 +188,11 @@
                             <TextBlock x:Name="Fan1MeasureLabel" Text="Fan 2: "/><TextBlock x:Name="MeasuredFan1Text" Text="-- RPM" FontWeight="Bold"/></StackPanel></Border>
                     </Grid>
                     <Border Grid.Row="2" Style="{StaticResource ClassicInsetBorder}" Margin="0,5,0,0" Padding="4">
-                        <Canvas x:Name="TemperatureGraphCanvas" Height="54" Background="#FFFFFF" ClipToBounds="True">
+                        <Canvas x:Name="TemperatureGraphCanvas" Height="54" Background="#FFFFFF" ClipToBounds="True"
+                                SizeChanged="TemperatureGraph_Changed" IsVisibleChanged="TemperatureGraph_VisibilityChanged">
                             <Line X1="0" Y1="18" X2="420" Y2="18" Stroke="#D0D0D0" StrokeThickness="1" />
                             <Line X1="0" Y1="36" X2="420" Y2="36" Stroke="#D0D0D0" StrokeThickness="1" />
-                            <Polyline x:Name="TemperatureGraphLine" Stroke="#000000" StrokeThickness="1" />
+                            <Path x:Name="TemperatureGraphLine" Stroke="#000000" StrokeThickness="1" />
                         </Canvas>
                     </Border>
                     <Grid Grid.Row="3" Margin="0,5,0,0">

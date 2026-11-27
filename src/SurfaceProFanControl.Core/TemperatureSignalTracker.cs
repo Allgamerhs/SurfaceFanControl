@@ -23,6 +23,8 @@ namespace SurfaceProFanControl.Core
             var timestamp = timestampUtc.Kind == DateTimeKind.Utc
                 ? timestampUtc
                 : timestampUtc.ToUniversalTime();
+            if (_samples.Count > 0 && timestamp < _samples.Last().TimestampUtc)
+                _samples.Clear();
             _samples.Enqueue(new TemperatureSample(temperatureCelsius.Value, timestamp));
             while (_samples.Count > WindowSize)
             {
@@ -45,23 +47,29 @@ namespace SurfaceProFanControl.Core
             }
 
             var now = nowUtc.Kind == DateTimeKind.Utc ? nowUtc : nowUtc.ToUniversalTime();
-            var ordered = _samples.Select(sample => sample.Celsius).OrderBy(value => value).ToArray();
-            var median = ordered[ordered.Length / 2];
-            var first = _samples.Peek();
             var last = _samples.Last();
+            var age = now < last.TimestampUtc ? TimeSpan.MaxValue : now - last.TimestampUtc;
+            if (age >= staleAfter)
+            {
+                return new TemperatureSignal(last.Celsius, _minimum, _maximum, 0.0, age, true, 0);
+            }
+
+            var fresh = _samples.Where(sample => now - sample.TimestampUtc < staleAfter).ToArray();
+            var ordered = fresh.Select(sample => sample.Celsius).OrderBy(value => value).ToArray();
+            var median = ordered[ordered.Length / 2];
+            var first = fresh[0];
             var elapsedMinutes = (last.TimestampUtc - first.TimestampUtc).TotalMinutes;
             var trend = elapsedMinutes >= (1.0 / 60.0)
                 ? (last.Celsius - first.Celsius) / elapsedMinutes
                 : 0.0;
-            var age = now > last.TimestampUtc ? now - last.TimestampUtc : TimeSpan.Zero;
             return new TemperatureSignal(
                 median,
                 _minimum,
                 _maximum,
                 trend,
                 age,
-                age > staleAfter,
-                _samples.Count);
+                false,
+                fresh.Length);
         }
 
         private readonly struct TemperatureSample

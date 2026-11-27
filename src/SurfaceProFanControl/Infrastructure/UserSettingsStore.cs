@@ -30,33 +30,50 @@ namespace SurfaceProFanControl.Infrastructure
             AcAggressivenessPercent = Math.Max(0, Math.Min(100, AcAggressivenessPercent));
             BatteryAggressivenessPercent = Math.Max(0, Math.Min(100, BatteryAggressivenessPercent));
             StartupDelaySeconds = Math.Max(0, Math.Min(60, StartupDelaySeconds));
+            if (StartupDelaySeconds != 0 && StartupDelaySeconds != 15 &&
+                StartupDelaySeconds != 30 && StartupDelaySeconds != 60)
+                StartupDelaySeconds = 15;
+            if (CustomCurveEnabled) UsePowerProfiles = false;
             CurveTurnOnCelsius = Math.Max(50, Math.Min(90, CurveTurnOnCelsius));
             CurveTurnOffCelsius = Math.Max(40, Math.Min(CurveTurnOnCelsius - 3, CurveTurnOffCelsius));
-            if (CurveDwellSeconds != 30 && CurveDwellSeconds != 60 &&
-                CurveDwellSeconds != 120 && CurveDwellSeconds != 300)
+            if (!IsSupportedCurveDwell(CurveDwellSeconds))
             {
                 CurveDwellSeconds = 60;
             }
             LanguageCode = string.IsNullOrWhiteSpace(LanguageCode)
                 ? string.Empty
                 : LocalizationCatalog.NormalizeLanguageCode(LanguageCode);
-            if (BoostMinutes != 5 && BoostMinutes != 15 && BoostMinutes != 30 && BoostMinutes != 60)
+            if (!IsSupportedBoost(BoostMinutes))
             {
                 BoostMinutes = 15;
             }
         }
+
+        internal static bool IsSupportedCurveDwell(int seconds) =>
+            seconds == 30 || seconds == 60 || seconds == 120 || seconds == 300;
+
+        internal static bool IsSupportedBoost(int minutes) =>
+            minutes == 5 || minutes == 15 || minutes == 30 || minutes == 60;
     }
 
     public sealed class UserSettingsStore
     {
         private const string SettingsKeyPath = @"Software\SurfaceProFanControl\Ui";
+        private readonly string _keyPath;
+
+        public UserSettingsStore() : this(SettingsKeyPath) { }
+
+        internal UserSettingsStore(string keyPath)
+        {
+            _keyPath = keyPath;
+        }
 
         public UserSettings Load()
         {
             var settings = new UserSettings();
             try
             {
-                using (var key = Registry.CurrentUser.OpenSubKey(SettingsKeyPath, writable: false))
+                using (var key = Registry.CurrentUser.OpenSubKey(_keyPath, writable: false))
                 {
                     if (key != null)
                     {
@@ -74,7 +91,10 @@ namespace SurfaceProFanControl.Infrastructure
                         settings.StartupDelaySeconds = ReadInteger(key, "StartupDelaySeconds", 15);
                         settings.LanguageCode = Convert.ToString(key.GetValue(
                             "LanguageCode", string.Empty, RegistryValueOptions.DoNotExpandEnvironmentNames)) ?? string.Empty;
-                        settings.CustomCurveEnabled = ReadBoolean(key, "CustomCurveEnabled", true);
+                        // Before curves existed, a stored aggressiveness or power profile was the active policy.
+                        var hasLegacyPolicy = key.GetValue("CoolingAggressivenessPercent") != null ||
+                            key.GetValue("UsePowerProfiles") != null;
+                        settings.CustomCurveEnabled = ReadBoolean(key, "CustomCurveEnabled", !hasLegacyPolicy);
                         settings.CurveTurnOnCelsius = ReadInteger(key, "CurveTurnOnCelsius", 70);
                         settings.CurveTurnOffCelsius = ReadInteger(key, "CurveTurnOffCelsius", 62);
                         settings.CurveDwellSeconds = ReadInteger(key, "CurveDwellSeconds", 60);
@@ -100,7 +120,7 @@ namespace SurfaceProFanControl.Infrastructure
             }
 
             settings.Normalize();
-            using (var key = Registry.CurrentUser.CreateSubKey(SettingsKeyPath, writable: true))
+            using (var key = Registry.CurrentUser.CreateSubKey(_keyPath, writable: true))
             {
                 if (key == null)
                 {
@@ -144,7 +164,9 @@ namespace SurfaceProFanControl.Infrastructure
         private static bool ReadBoolean(RegistryKey key, string name, bool fallback)
         {
             var value = ReadInteger(key, name, fallback ? 1 : 0);
-            return value == 1;
+            if (value == 0) return false;
+            if (value == 1) return true;
+            return fallback;
         }
     }
 }

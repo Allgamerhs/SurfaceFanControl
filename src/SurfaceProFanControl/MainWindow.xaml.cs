@@ -7,6 +7,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -40,11 +41,15 @@ namespace SurfaceProFanControl
         private readonly UserSettings _settings;
         private readonly HardwareSupport _hardwareSupport;
         private readonly DispatcherTimer _timer;
-        private readonly List<double> _temperatureHistory = new List<double>();
+        private readonly List<(DateTime TimeUtc, double? Celsius)> _temperatureHistory = new List<(DateTime, double?)>();
+        private DateTime? _ecTemperatureTimeUtc;
+        private DateTime? _lastSafetySampleUtc;
         private readonly TemperatureSignalTracker _temperatureSignalTracker = new TemperatureSignalTracker();
         private readonly ThermalSafetyController _emergencyController = new ThermalSafetyController(82, 74, 3);
         private readonly DateTime _profileArmUtc;
-        private TelemetrySnapshot? _lastTelemetry;
+        private TelemetrySnapshot? _lastRawTelemetry;
+        private int? _peakFan0Rpm;
+        private int? _peakFan1Rpm;
         private FanGuardSnapshot? _lastRpmMeasurement;
         private FanGuardSnapshot? _lastLoggedMeasurement;
         private int _loggedAttachmentMeasurements;
@@ -294,7 +299,8 @@ namespace SurfaceProFanControl
             SetButtons(false);
             try
             {
-                var telemetry = await Task.Run(() => _telemetry.Read());
+                var telemetry = await Task.Run(() => _telemetry.ReadForDisplay());
+                _lastRawTelemetry = telemetry;
                 if (_hardwareSupport.CanControl)
                 {
                     var snapshot = await Task.Run(() => _guard.ReadStatus());
@@ -340,20 +346,20 @@ namespace SurfaceProFanControl
 
         private async void ConstantMaximumButton_Click(object sender, RoutedEventArgs e)
         {
-            await RunCommand(() => _guard.SetMaximum(), T("PolicyMax"), () => SelectConstantPolicy(100));
+            await RunCommand(() => _guard.SetMaximum(), T("PolicyMax"), () => SelectGeneralPolicy(100));
         }
 
         private async void AutomaticButton_Click(object sender, RoutedEventArgs e)
         {
-            await RunCommand(() => _guard.SetAutomatic(), T("PolicyAuto"), () => SelectConstantPolicy(0));
+            await RunCommand(() => _guard.SetAutomatic(), T("PolicyAuto"), () => SelectGeneralPolicy(0));
         }
 
-        private void SelectConstantPolicy(int percent)
+        private void SelectGeneralPolicy(int percent)
         {
             _boostEndsUtc = null;
             _settings.UsePowerProfiles = false;
             _settings.CustomCurveEnabled = false;
-            SetAggressiveness(percent, false);
+            SetAggressiveness(percent);
             UpdatePowerProfileControls();
             UpdateCurveControls();
             UpdateBoostText();
@@ -414,7 +420,7 @@ namespace SurfaceProFanControl
                 }
                 if (selectionVersion == _policySelectionVersion) applySelection();
                 UpdateModeClock(snapshot);
-                Present(snapshot, success, _lastTelemetry);
+                Present(snapshot, success, MergeLastTelemetry(DateTime.UtcNow));
                 if (!_closing) _timer.Start();
             }
             catch (Exception ex)
@@ -449,7 +455,7 @@ namespace SurfaceProFanControl
             try
             {
                 _timerTicks++;
-                var telemetryTask = Task.Run(() => _timerTicks % 5 == 0 ? _telemetry.Read() : _telemetry.ReadSafety());
+                var telemetryTask = Task.Run(() => _telemetry.ReadForDisplay());
                 if (!_hardwareSupport.CanControl)
                 {
                     var monitoring = await telemetryTask;
@@ -459,10 +465,10 @@ namespace SurfaceProFanControl
 
                 var guardTask = Task.Run(() => applyPolicy ? _guard.SendHeartbeat() : _guard.ReadStatus());
                 await Task.WhenAll(guardTask, telemetryTask);
-                var now = DateTime.UtcNow;
                 var snapshot = guardTask.Result;
                 if (_timerTicks % EcMeasurementIntervalTicks == 0)
                 {
+                    AutomationProperties.SetItemStatus(MeasureRpmButton, T("SensorEc"));
                     try
                     {
                         var measured = await Task.Run(() => _guard.Measure());
@@ -473,8 +479,14 @@ namespace SurfaceProFanControl
                     {
                         AppLogger.Error("Periodic EC temperature measurement failed; the last valid sample will expire safely.", ex);
                     }
+                    finally
+                    {
+                        AutomationProperties.SetItemStatus(MeasureRpmButton, string.Empty);
+                    }
                 }
-                var telemetry = MergeTelemetry(telemetryTask.Result, now);
+                var now = DateTime.UtcNow;
+                _lastRawTelemetry = telemetryTask.Result;
+                var telemetry = MergeTelemetry(_lastRawTelemetry, now);
                 if (_closing) return false;
                 UpdateModeClock(snapshot);
                 if (!applyPolicy)
@@ -491,7 +503,13 @@ namespace SurfaceProFanControl
                     Notify(T("BoostReady"), T("PolicyAuto"));
                 }
 
-                var emergency = _emergencyController.Evaluate(telemetry.TemperatureCelsius);
+                var sampleUtc = telemetry.TemperatureTimestamp.ToUniversalTime();
+                var emergency = _emergencyController.IsEmergency ? SafetyDecision.StayEmergency : SafetyDecision.None;
+                if (!telemetry.TemperatureCelsius.HasValue || sampleUtc != _lastSafetySampleUtc)
+                {
+                    emergency = _emergencyController.Evaluate(telemetry.TemperatureCelsius);
+                    _lastSafetySampleUtc = telemetry.TemperatureCelsius.HasValue ? sampleUtc : (DateTime?)null;
+                }
                 var emergencyActive = emergency == SafetyDecision.EnterEmergency ||
                                       emergency == SafetyDecision.StayEmergency;
                 if (emergencyActive && !_emergencyNotificationShown)
@@ -515,7 +533,7 @@ namespace SurfaceProFanControl
                         _settings.CurveTurnOffCelsius,
                         TimeSpan.FromSeconds(_settings.CurveDwellSeconds),
                         _lastTemperatureSignal.ControlTemperatureCelsius ?? telemetry.TemperatureCelsius,
-                        _lastTemperatureSignal.TrendCelsiusPerMinute,
+                        _lastTemperatureSignal.IsStale ? 0 : _lastTemperatureSignal.TrendCelsiusPerMinute,
                         _settings.PredictiveCoolingEnabled,
                         snapshot.IsMaximum,
                         timeInCurrentMode,
@@ -566,10 +584,10 @@ namespace SurfaceProFanControl
         private int EffectiveAggressiveness(TelemetrySnapshot telemetry) =>
             CoolingProfileCatalog.EffectiveAggressiveness(
                 _settings.CoolingAggressivenessPercent,
-                _settings.UsePowerProfiles,
+                _settings.UsePowerProfiles && telemetry.OnAcPower.HasValue,
                 _settings.AcAggressivenessPercent,
                 _settings.BatteryAggressivenessPercent,
-                telemetry.OnAcPower);
+                telemetry.OnAcPower.GetValueOrDefault());
 
         private string BuildAutomationStatus(int effectivePercent, bool timedBoostActive)
         {
@@ -595,14 +613,13 @@ namespace SurfaceProFanControl
         {
             if (liveTelemetry != null)
             {
-                _lastTelemetry = liveTelemetry;
-                AddTemperature(liveTelemetry.TemperatureCelsius);
+                AddTemperature(liveTelemetry.TemperatureCelsius, liveTelemetry.Timestamp);
                 if (_settings.TelemetryLoggingEnabled) _history.Append(liveTelemetry, snapshot.IsMaximum ? "MAX" : "AUTO");
             }
             ModeText.Text = snapshot.IsMaximum ? T("ModeMaximum") : T("ModeAutomatic");
             ModeText.Foreground = Brushes.Black;
-            var temperature = liveTelemetry?.TemperatureCelsius ?? snapshot.TemperatureCelsius;
-            var critical = liveTelemetry?.FirmwareCriticalCelsius ?? snapshot.CriticalCelsius;
+            var temperature = liveTelemetry?.TemperatureCelsius;
+            var critical = liveTelemetry?.FirmwareCriticalCelsius;
             TemperatureText.Text = temperature.HasValue ? temperature.Value.ToString("0.0", CultureInfo.CurrentCulture) + " °C" : "-- °C";
             CriticalText.Text = " / " + T("Critical") + " " + (critical.HasValue ? critical.Value.ToString("0", CultureInfo.CurrentCulture) : "--");
             Fan0RpmText.Text = snapshot.IsMaximum ? "MAX" : "AUTO";
@@ -617,8 +634,8 @@ namespace SurfaceProFanControl
 
         private void PresentMonitoring(TelemetrySnapshot telemetry)
         {
-            _lastTelemetry = telemetry;
-            AddTemperature(telemetry.TemperatureCelsius);
+            _lastRawTelemetry = telemetry;
+            AddTemperature(telemetry.TemperatureCelsius, telemetry.Timestamp);
             if (_settings.TelemetryLoggingEnabled) _history.Append(telemetry, "MONITOR");
             ModeText.Text = T("MonitoringOnly").ToUpper(CultureInfo.CurrentCulture);
             TemperatureText.Text = telemetry.TemperatureCelsius.HasValue
@@ -629,9 +646,7 @@ namespace SurfaceProFanControl
             Fan0RpmText.Text = "--";
             Fan0DutyText.Text = " / " + T("MonitoringOnly");
             PresentPower(telemetry);
-            CurveSensorText.Text = telemetry.TemperatureCelsius.HasValue
-                ? T("SensorAcpi") + " • " + telemetry.TemperatureCelsius.Value.ToString("0.0", CultureInfo.CurrentCulture) + " °C"
-                : T("SensorUnavailable");
+            UpdateCurvePresentation(TemperatureSignal.Empty);
             StatusText.Text = T("DeviceMonitoringOnly");
             LastUpdateText.Text = DateTime.Now.ToString("HH:mm:ss", CultureInfo.CurrentCulture);
         }
@@ -639,7 +654,7 @@ namespace SurfaceProFanControl
         private void PresentPower(TelemetrySnapshot? telemetry)
         {
             Fan1RpmText.Text = telemetry?.CpuLoadPercent.HasValue == true ? telemetry.CpuLoadPercent.Value + " %" : "-- %";
-            var power = telemetry?.OnAcPower == true ? T("OnAc") : T("OnBattery");
+            var power = telemetry?.OnAcPower is bool ac ? T(ac ? "OnAc" : "OnBattery") : "--";
             if (telemetry?.BatteryPercent.HasValue == true) power += " " + telemetry.BatteryPercent.Value + "%";
             Fan1DutyText.Text = " / " + power;
         }
@@ -647,11 +662,10 @@ namespace SurfaceProFanControl
         private void RecordEcMeasurement(FanGuardSnapshot measured)
         {
             var now = DateTime.UtcNow;
-            _temperatureSignalTracker.Add(measured.TemperatureCelsius, now);
-            if (measured.CriticalCelsius.HasValue)
-            {
-                _lastEcCriticalCelsius = measured.CriticalCelsius;
-            }
+            _temperatureSignalTracker.Add(measured.TemperatureCelsius, measured.ReceivedAtUtc);
+            if (measured.TemperatureCelsius >= -20 && measured.TemperatureCelsius <= 120)
+                _ecTemperatureTimeUtc = measured.ReceivedAtUtc;
+            _lastEcCriticalCelsius = measured.CriticalCelsius;
             _lastTemperatureSignal = _temperatureSignalTracker.Read(now, EcSampleStaleAfter);
             RecordRpmMeasurement(measured);
         }
@@ -659,6 +673,8 @@ namespace SurfaceProFanControl
         private void RecordRpmMeasurement(FanGuardSnapshot measured)
         {
             _lastRpmMeasurement = measured;
+            _peakFan0Rpm = Math.Max(_peakFan0Rpm ?? measured.Fan0Rpm, measured.Fan0Rpm);
+            _peakFan1Rpm = Math.Max(_peakFan1Rpm ?? measured.Fan1Rpm, measured.Fan1Rpm);
             UpdateRpmDisplay();
         }
 
@@ -667,6 +683,8 @@ namespace SurfaceProFanControl
             var sample = _lastRpmMeasurement;
             var current = sample != null && sample.Age < EcSampleStaleAfter ? sample : null;
             var culture = CultureInfo.CurrentCulture;
+            VerifiedPeakRpmText.Text = (_peakFan0Rpm?.ToString("N0", culture) ?? "--") + " / " +
+                                       (_peakFan1Rpm?.ToString("N0", culture) ?? "--");
             MeasuredFan0Text.Text = (current?.Fan0Rpm.ToString("N0", culture) ?? "--") + " RPM";
             MeasuredFan1Text.Text = (current?.Fan1Rpm.ToString("N0", culture) ?? "--") + " RPM";
             if (sample == null)
@@ -708,21 +726,26 @@ namespace SurfaceProFanControl
         private TelemetrySnapshot MergeTelemetry(TelemetrySnapshot telemetry, DateTime nowUtc)
         {
             _lastTemperatureSignal = _temperatureSignalTracker.Read(nowUtc, EcSampleStaleAfter);
-            var temperature = _lastTemperatureSignal.ControlTemperatureCelsius ?? telemetry.TemperatureCelsius;
-            var critical = _lastEcCriticalCelsius ?? telemetry.FirmwareCriticalCelsius;
+            var rawAge = nowUtc - telemetry.Timestamp.ToUniversalTime();
+            var rawCurrent = rawAge >= TimeSpan.Zero && rawAge < EcSampleStaleAfter;
+            var thermalAge = nowUtc - telemetry.TemperatureTimestamp.ToUniversalTime();
+            var thermalCurrent = thermalAge >= TimeSpan.Zero && thermalAge < EcSampleStaleAfter;
+            var temperature = _lastTemperatureSignal.ControlTemperatureCelsius ?? (thermalCurrent ? telemetry.TemperatureCelsius : null);
+            var critical = (_lastTemperatureSignal.IsStale ? null : _lastEcCriticalCelsius) ?? (thermalCurrent ? telemetry.FirmwareCriticalCelsius : null);
             return new TelemetrySnapshot(
                 temperature,
                 critical,
-                telemetry.CpuLoadPercent,
-                telemetry.OnAcPower,
-                telemetry.BatteryPercent,
-                telemetry.Timestamp);
+                rawCurrent ? telemetry.CpuLoadPercent : null,
+                rawCurrent ? telemetry.OnAcPower : null,
+                rawCurrent ? telemetry.BatteryPercent : null,
+                telemetry.Timestamp,
+                _lastTemperatureSignal.ControlTemperatureCelsius.HasValue && _ecTemperatureTimeUtc.HasValue
+                    ? _ecTemperatureTimeUtc.Value : telemetry.TemperatureTimestamp);
         }
 
-        private TelemetrySnapshot MergeLastTelemetry(DateTime nowUtc)
+        private TelemetrySnapshot? MergeLastTelemetry(DateTime nowUtc)
         {
-            var telemetry = _lastTelemetry ?? new TelemetrySnapshot(null, null, null, false, null, DateTime.Now);
-            return MergeTelemetry(telemetry, nowUtc);
+            return _lastRawTelemetry == null ? null : MergeTelemetry(_lastRawTelemetry, nowUtc);
         }
 
         private void UpdateCurvePresentation(TemperatureSignal signal)
@@ -736,20 +759,32 @@ namespace SurfaceProFanControl
                 new Point(0, 35), new Point(onX, 35), new Point(onX, 11), new Point(width, 11)
             };
 
-            if (!signal.TemperatureCelsius.HasValue)
+            CurveReturnThreshold.X1 = CurveReturnThreshold.X2 = TemperatureToCurveX(_settings.CurveTurnOffCelsius, width);
+            CurveReturnThreshold.ToolTip = "AUTO • " + CurveTurnOffValueText.Text;
+            CurvePreviewLine.ToolTip = "MAX • " + CurveTurnOnValueText.Text;
+            var raw = _lastRawTelemetry;
+            var rawAge = raw == null ? TimeSpan.MaxValue : DateTime.UtcNow - raw.TemperatureTimestamp.ToUniversalTime();
+            var ec = signal.ControlTemperatureCelsius;
+            var current = ec ?? (rawAge >= TimeSpan.Zero && rawAge < EcSampleStaleAfter ? raw?.TemperatureCelsius : null);
+            var sampleTime = ec.HasValue ? _ecTemperatureTimeUtc : raw?.TemperatureTimestamp;
+            TemperatureText.ToolTip = current.HasValue && sampleTime.HasValue
+                ? T(ec.HasValue ? "SensorEc" : "SensorAcpi") + " • " + sampleTime.Value.ToLocalTime().ToString("HH:mm:ss")
+                : T("SensorUnavailable");
+            if (!current.HasValue)
             {
                 CurveCurrentMarker.Visibility = Visibility.Collapsed;
-                CurveSensorText.Text = T("SensorWaiting");
+                CurveSensorText.Text = T("SensorUnavailable");
             }
             else
             {
-                var currentX = TemperatureToCurveX(signal.TemperatureCelsius.Value, width);
+                var currentX = TemperatureToCurveX(current.Value, width);
                 CurveCurrentMarker.X1 = currentX;
                 CurveCurrentMarker.X2 = currentX;
                 CurveCurrentMarker.Visibility = Visibility.Visible;
                 var age = signal.Age == TimeSpan.MaxValue ? "--" : Math.Max(0, (int)Math.Round(signal.Age.TotalSeconds)).ToString(CultureInfo.CurrentCulture);
-                CurveSensorText.Text = string.Format(CultureInfo.CurrentCulture, T(signal.IsStale ? "SensorEcStale" : "SensorEcLive"),
-                    signal.TemperatureCelsius.Value, age, signal.TrendCelsiusPerMinute);
+                CurveSensorText.Text = ec.HasValue
+                    ? string.Format(CultureInfo.CurrentCulture, T("SensorEcLive"), current.Value, age, signal.TrendCelsiusPerMinute)
+                    : T("SensorAcpi") + " • " + current.Value.ToString("0.0", CultureInfo.CurrentCulture) + " °C";
             }
 
             CurveHintText.Text = signal.MinimumCelsius.HasValue && signal.MaximumCelsius.HasValue
@@ -763,30 +798,58 @@ namespace SurfaceProFanControl
             return normalized * width;
         }
 
-        private void PresentFailure(string prefix, Exception exception)
+        private void PresentFailure(string prefix, Exception exception, bool modeUnknown = true)
         {
-            ModeText.Text = T("ModeError");
-            ModeText.Foreground = Brushes.Black;
+            if (modeUnknown)
+            {
+                ModeText.Text = T("ModeError");
+                ModeText.Foreground = Brushes.Black;
+            }
             StatusText.Text = prefix + ": " + exception.Message;
             AppLogger.Error(prefix, exception);
             Notify(T("ModeError"), exception.Message);
         }
 
-        private void AddTemperature(double? temperature)
+        private void AddTemperature(double? temperature, DateTime timestamp)
         {
-            if (!temperature.HasValue) return;
-            _temperatureHistory.Add(temperature.Value);
-            while (_temperatureHistory.Count > 60) _temperatureHistory.RemoveAt(0);
-            var width = Math.Max(1, TemperatureGraphCanvas.ActualWidth);
-            const double height = 54;
-            var points = new PointCollection();
-            for (var index = 0; index < _temperatureHistory.Count; index++)
+            var time = timestamp.ToUniversalTime();
+            if (_temperatureHistory.Count > 0 && time <= _temperatureHistory[_temperatureHistory.Count - 1].TimeUtc)
             {
-                var x = _temperatureHistory.Count == 1 ? 0 : index * width / (_temperatureHistory.Count - 1);
-                var normalized = Math.Max(0, Math.Min(1, (_temperatureHistory[index] - 35) / 60));
-                points.Add(new Point(x, height - normalized * height));
+                if (time == _temperatureHistory[_temperatureHistory.Count - 1].TimeUtc) return;
+                _temperatureHistory.Clear();
             }
-            TemperatureGraphLine.Points = points;
+            _temperatureHistory.RemoveAll(sample => (time - sample.TimeUtc).TotalSeconds > 60);
+            _temperatureHistory.Add((time, temperature));
+            DrawTemperatureGraph();
+        }
+
+        private void TemperatureGraph_Changed(object sender, SizeChangedEventArgs e) => DrawTemperatureGraph();
+        private void TemperatureGraph_VisibilityChanged(object sender, DependencyPropertyChangedEventArgs e) => DrawTemperatureGraph();
+
+        private void DrawTemperatureGraph()
+        {
+            if (TemperatureGraphCanvas?.IsVisible != true || TemperatureGraphLine == null) return;
+            var end = DateTime.UtcNow;
+            var geometry = new StreamGeometry();
+            using (var context = geometry.Open())
+            {
+                DateTime? previous = null;
+                foreach (var sample in _temperatureHistory)
+                {
+                    var age = (end - sample.TimeUtc).TotalSeconds;
+                    if (age < 0 || age > 60 || !sample.Celsius.HasValue) { previous = null; continue; }
+                    var fraction = Math.Max(0, Math.Min(1, (sample.Celsius.Value - 35) / 60));
+                    var point = new Point((1 - age / 60) * TemperatureGraphCanvas.ActualWidth,
+                        (1 - fraction) * TemperatureGraphCanvas.ActualHeight);
+                    if (!previous.HasValue || (sample.TimeUtc - previous.Value).TotalSeconds > 3)
+                        context.BeginFigure(point, false, false);
+                    else
+                        context.LineTo(point, true, false);
+                    previous = sample.TimeUtc;
+                }
+            }
+            geometry.Freeze();
+            TemperatureGraphLine.Data = geometry;
         }
 
         private void UpdateModeClock(FanGuardSnapshot snapshot)
@@ -820,21 +883,14 @@ namespace SurfaceProFanControl
             if (_loadingSettings || !(ProfileComboBox.SelectedItem is Choice<CoolingProfileId> choice) ||
                 choice.Value == CoolingProfileId.Custom) return;
             MarkPolicySelectionChanged();
-            _settings.UsePowerProfiles = false;
-            _settings.CustomCurveEnabled = false;
-            SetAggressiveness(CoolingProfileCatalog.Get(choice.Value).AggressivenessPercent, true);
-            UpdatePowerProfileControls();
-            UpdateCurveControls();
-            SaveSettings();
+            SelectGeneralPolicy(CoolingProfileCatalog.Get(choice.Value).AggressivenessPercent);
         }
 
         private void AggressivenessSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (_loadingSettings) return;
             MarkPolicySelectionChanged();
-            _settings.CustomCurveEnabled = false;
-            UpdateCurveControls();
-            SetAggressiveness((int)Math.Round(e.NewValue), true);
+            SelectGeneralPolicy((int)Math.Round(e.NewValue));
         }
 
         private void AggressivenessTextBox_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) => ApplyAggressivenessText();
@@ -856,12 +912,10 @@ namespace SurfaceProFanControl
                 return;
             }
             MarkPolicySelectionChanged();
-            _settings.CustomCurveEnabled = false;
-            UpdateCurveControls();
-            SetAggressiveness(Math.Max(0, Math.Min(100, value)), true);
+            SelectGeneralPolicy(value);
         }
 
-        private void SetAggressiveness(int value, bool persist)
+        private void SetAggressiveness(int value)
         {
             value = Math.Max(0, Math.Min(100, value));
             _loadingSettings = true;
@@ -877,7 +931,6 @@ namespace SurfaceProFanControl
             {
                 _loadingSettings = false;
             }
-            if (persist) SaveSettings();
         }
 
         private void UpdateAggressivenessPolicyText()
@@ -1069,7 +1122,7 @@ namespace SurfaceProFanControl
             }
             catch (Exception ex)
             {
-                PresentFailure(T("MeasureRpm"), ex);
+                PresentFailure(T("MeasureRpm"), ex, modeUnknown: false);
             }
             finally
             {
@@ -1154,7 +1207,7 @@ namespace SurfaceProFanControl
             }
             catch (Exception ex)
             {
-                PresentFailure(T("ImportProfile"), ex);
+                PresentFailure(T("ImportProfile"), ex, modeUnknown: false);
             }
         }
 
@@ -1169,16 +1222,16 @@ namespace SurfaceProFanControl
             }
             catch (Exception ex)
             {
-                PresentFailure(T("ExportProfile"), ex);
+                PresentFailure(T("ExportProfile"), ex, modeUnknown: false);
             }
         }
 
         private async void ResetControlButton_Click(object sender, RoutedEventArgs e)
         {
             if (_hardwareSupport.CanControl)
-                await RunCommand(() => _guard.SetAutomatic(), T("PolicyAuto"), () => SelectConstantPolicy(0));
+                await RunCommand(() => _guard.SetAutomatic(), T("PolicyAuto"), () => SelectGeneralPolicy(0));
             else
-                SelectConstantPolicy(0);
+                SelectGeneralPolicy(0);
         }
 
         private void LanguageComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1224,7 +1277,7 @@ namespace SurfaceProFanControl
                 _loadingSettings = true;
                 StartWithWindowsCheckBox.IsChecked = !requested;
                 _loadingSettings = false;
-                PresentFailure(T("StartWithWindows"), ex);
+                PresentFailure(T("StartWithWindows"), ex, modeUnknown: false);
             }
         }
 
@@ -1306,8 +1359,9 @@ namespace SurfaceProFanControl
 
         private static string TruncateTrayText(string value) => value.Length <= 63 ? value : value.Substring(0, 63);
 
-        private void ShowFromTray()
+        internal void ShowFromTray()
         {
+            if (_closing) return;
             Show();
             WindowState = WindowState.Normal;
             Activate();
@@ -1331,11 +1385,16 @@ namespace SurfaceProFanControl
             _windowSource = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
             _windowSource?.AddHook(WindowMessageHook);
             var handle = new WindowInteropHelper(this).Handle;
-            var registered = RegisterHotKey(handle, HotKeyAutomatic, ModControl | ModAlt, (uint)KeyInterop.VirtualKeyFromKey(Key.D1)) &&
-                             RegisterHotKey(handle, HotKeyQuiet, ModControl | ModAlt, (uint)KeyInterop.VirtualKeyFromKey(Key.D2)) &&
-                             RegisterHotKey(handle, HotKeyBalanced, ModControl | ModAlt, (uint)KeyInterop.VirtualKeyFromKey(Key.D3)) &&
-                             RegisterHotKey(handle, HotKeyMaximum, ModControl | ModAlt, (uint)KeyInterop.VirtualKeyFromKey(Key.D4));
-            if (!registered) AppLogger.Info("One or more global fan hotkeys could not be registered.");
+            RegisterProfileHotKey(handle, HotKeyAutomatic, Key.D1);
+            RegisterProfileHotKey(handle, HotKeyQuiet, Key.D2);
+            RegisterProfileHotKey(handle, HotKeyBalanced, Key.D3);
+            RegisterProfileHotKey(handle, HotKeyMaximum, Key.D4);
+        }
+
+        private static void RegisterProfileHotKey(IntPtr handle, int id, Key key)
+        {
+            if (!RegisterHotKey(handle, id, ModControl | ModAlt, (uint)KeyInterop.VirtualKeyFromKey(key)))
+                AppLogger.Info("Could not register fan hotkey Ctrl+Alt+" + key);
         }
 
         private IntPtr WindowMessageHook(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -1363,12 +1422,7 @@ namespace SurfaceProFanControl
         private void ApplyHotKeyProfile(CoolingProfileId id)
         {
             MarkPolicySelectionChanged();
-            _settings.UsePowerProfiles = false;
-            _settings.CustomCurveEnabled = false;
-            SetAggressiveness(CoolingProfileCatalog.Get(id).AggressivenessPercent, true);
-            UpdatePowerProfileControls();
-            UpdateCurveControls();
-            SaveSettings();
+            SelectGeneralPolicy(CoolingProfileCatalog.Get(id).AggressivenessPercent);
         }
 
         protected override void OnClosing(CancelEventArgs e)

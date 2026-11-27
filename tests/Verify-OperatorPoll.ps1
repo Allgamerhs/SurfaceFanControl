@@ -51,7 +51,7 @@ function Field($Name) { $type.GetField($Name, $fields).GetValue($window) }
 foreach ($name in 'TimedBoostButton','ConstantMaximumButton','AutomaticButton','MeasureRpmButton','HealthTestButton',
     'ResetControlButton','ModeText','StatusText','TemperatureText','CriticalText','Fan0RpmText','Fan0DutyText',
     'Fan1RpmText','Fan1DutyText','CurveTurnOnValueText','CurveTurnOffValueText','CurvePreviewCanvas','CurvePreviewLine',
-    'CurveCurrentMarker','CurveSensorText','CurveHintText','LastUpdateText') {
+    'CurveReturnThreshold','CurveCurrentMarker','CurveSensorText','CurveHintText','LastUpdateText') {
     $field = $type.GetField($name, $fields)
     $field.SetValue($window, [Activator]::CreateInstance($field.FieldType))
 }

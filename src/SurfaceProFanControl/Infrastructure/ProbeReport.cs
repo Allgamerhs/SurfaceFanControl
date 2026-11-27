@@ -24,7 +24,7 @@ namespace SurfaceProFanControl.Infrastructure
             AppendNumber(builder, "temperatureCelsius", telemetry.TemperatureCelsius, true);
             AppendNumber(builder, "firmwareCriticalCelsius", telemetry.FirmwareCriticalCelsius, true);
             builder.AppendLine($"  \"cpuLoadPercent\": {(telemetry.CpuLoadPercent.HasValue ? telemetry.CpuLoadPercent.Value.ToString(CultureInfo.InvariantCulture) : "null")},");
-            builder.AppendLine($"  \"onAcPower\": {telemetry.OnAcPower.ToString().ToLowerInvariant()},");
+            builder.AppendLine($"  \"onAcPower\": {telemetry.OnAcPower?.ToString().ToLowerInvariant() ?? "null"},");
             builder.AppendLine($"  \"batteryPercent\": {(telemetry.BatteryPercent.HasValue ? telemetry.BatteryPercent.Value.ToString(CultureInfo.InvariantCulture) : "null")}");
             builder.AppendLine("}");
             return builder.ToString();

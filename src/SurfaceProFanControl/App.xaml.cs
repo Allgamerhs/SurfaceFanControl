@@ -14,6 +14,7 @@ namespace SurfaceProFanControl
         private const string MutexName = @"Global\SurfaceProFanControl.Application";
         private Mutex? _instanceMutex;
         private bool _ownsMutex;
+        private WindowActivation? _activation;
 
         protected override void OnStartup(StartupEventArgs e)
         {
@@ -80,12 +81,22 @@ namespace SurfaceProFanControl
             {
                 if (!TryAcquireExclusiveInstance())
                 {
-                    MessageBox.Show("Surface Pro Soğutma Kontrolü zaten çalışıyor.",
-                        "Uygulama açık", MessageBoxButton.OK, MessageBoxImage.Information);
-                    Shutdown(2);
-                    return;
+                    if (startupLaunch || resumeProfile || WindowActivation.TryShowExisting())
+                    {
+                        Shutdown(0);
+                        return;
+                    }
+                    // The previous instance may have exited while we were looking for its window.
+                    if (!TryAcquireExclusiveInstance())
+                    {
+                        MessageBox.Show("Surface Pro Soğutma Kontrolü zaten çalışıyor.",
+                            "Uygulama açık", MessageBoxButton.OK, MessageBoxImage.Information);
+                        Shutdown(2);
+                        return;
+                    }
                 }
 
+                _activation = new WindowActivation();
                 var device = new HardwareProbe().ReadDevice();
                 var hardwareSupport = DistributionProfile.IsPortable
                     ? new HardwareSupport(
@@ -114,6 +125,7 @@ namespace SurfaceProFanControl
                 }
                 MainWindow = window;
                 window.Show();
+                _activation.Listen(Dispatcher, window.ShowFromTray);
             }
             catch (Exception ex)
             {
@@ -187,7 +199,7 @@ namespace SurfaceProFanControl
                 return true;
             }
 
-            _instanceMutex = new Mutex(false, MutexName);
+            _instanceMutex ??= new Mutex(false, MutexName);
             try
             {
                 _ownsMutex = _instanceMutex.WaitOne(0, false);
@@ -225,6 +237,7 @@ namespace SurfaceProFanControl
 
         protected override void OnExit(ExitEventArgs e)
         {
+            _activation?.Dispose();
             if (_ownsMutex && _instanceMutex != null)
             {
                 try
