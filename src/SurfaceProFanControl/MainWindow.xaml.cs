@@ -31,6 +31,7 @@ namespace SurfaceProFanControl
         private const int HotKeyMaximum = 104;
         private const int EcMeasurementIntervalTicks = 5;
         private static readonly TimeSpan EcSampleStaleAfter = TimeSpan.FromSeconds(20);
+        private static readonly TimeSpan OperatorWaitForPoll = TimeSpan.FromSeconds(2);
 
         private readonly FanGuardClient _guard;
         private readonly TelemetryService _telemetry = new TelemetryService();
@@ -54,7 +55,9 @@ namespace SurfaceProFanControl
         private DateTime? _boostEndsUtc;
         private bool _lastKnownMaximum;
         private bool _fanPolicyActive;
+        private int _policySelectionVersion;
         private bool _requestInFlight;
+        private Task<bool>? _activePoll;
         private bool _closing;
         private bool _allowClose;
         private bool _loadingSettings;
@@ -328,71 +331,99 @@ namespace SurfaceProFanControl
 
         private async void TimedBoostButton_Click(object sender, RoutedEventArgs e)
         {
-            if (!_hardwareSupport.CanControl) return;
-            _boostEndsUtc = DateTime.UtcNow.AddMinutes(_settings.BoostMinutes);
-            UpdateBoostText();
-            if (!await RunCommand(() => _guard.SetMaximum(), T("TimedBoost")))
+            await RunCommand(() => _guard.SetMaximum(), T("TimedBoost"), () =>
             {
-                _boostEndsUtc = null;
+                _boostEndsUtc = DateTime.UtcNow.AddMinutes(_settings.BoostMinutes);
                 UpdateBoostText();
-            }
+            });
         }
 
         private async void ConstantMaximumButton_Click(object sender, RoutedEventArgs e)
         {
-            if (!_hardwareSupport.CanControl) return;
-            _boostEndsUtc = null;
-            _settings.UsePowerProfiles = false;
-            _settings.CustomCurveEnabled = false;
-            SetAggressiveness(100, true);
-            UpdatePowerProfileControls();
-            UpdateCurveControls();
-            SaveSettings();
-            await RunCommand(() => _guard.SetMaximum(), T("PolicyMax"));
+            await RunCommand(() => _guard.SetMaximum(), T("PolicyMax"), () => SelectConstantPolicy(100));
         }
 
         private async void AutomaticButton_Click(object sender, RoutedEventArgs e)
         {
-            if (!_hardwareSupport.CanControl) return;
+            await RunCommand(() => _guard.SetAutomatic(), T("PolicyAuto"), () => SelectConstantPolicy(0));
+        }
+
+        private void SelectConstantPolicy(int percent)
+        {
             _boostEndsUtc = null;
             _settings.UsePowerProfiles = false;
             _settings.CustomCurveEnabled = false;
-            SetAggressiveness(0, true);
+            SetAggressiveness(percent, false);
             UpdatePowerProfileControls();
             UpdateCurveControls();
+            UpdateBoostText();
             SaveSettings();
-            await RunCommand(() => _guard.SetAutomatic(), T("PolicyAuto"));
         }
 
-        private async Task<bool> RunCommand(Func<FanGuardSnapshot> command, string success)
+        private async Task<bool> BeginOperatorRequestAsync()
         {
             if (_requestInFlight || _closing || !_hardwareSupport.CanControl) return false;
             _requestInFlight = true;
             SetButtons(false);
-            StatusText.Text = T("Connecting") + "…";
+            var poll = _activePoll;
+            if (poll != null)
+            {
+                if (!poll.IsCompleted)
+                {
+                    AppLogger.Info("Operator request accepted while a sensor poll was in progress.");
+                    StatusText.Text = T("Connecting") + "…";
+                    if (await Task.WhenAny(poll, Task.Delay(OperatorWaitForPoll)) != poll)
+                    {
+                        if (!_closing) StatusText.Text = new TimeoutException().Message;
+                        AppLogger.Info("Operator request expired before the sensor poll finished; no command sent.");
+                        EndOperatorRequest();
+                        return false;
+                    }
+                }
+                if (!await poll)
+                {
+                    EndOperatorRequest();
+                    return false;
+                }
+            }
+            if (!_closing) return true;
+            EndOperatorRequest();
+            return false;
+        }
+
+        private void EndOperatorRequest()
+        {
+            _requestInFlight = false;
+            SetButtons(!_closing);
+        }
+
+        private async Task RunCommand(Func<FanGuardSnapshot> command, string success, Action applySelection)
+        {
+            var selectionVersion = _policySelectionVersion;
+            if (!await BeginOperatorRequestAsync()) return;
             try
             {
+                if (selectionVersion != _policySelectionVersion) return;
+                StatusText.Text = T("Connecting") + "…";
                 var snapshot = await Task.Run(command);
                 _fanPolicyActive = true;
                 if (_closing)
                 {
                     await Task.Run(() => _guard.SetAutomatic());
-                    return false;
+                    return;
                 }
+                if (selectionVersion == _policySelectionVersion) applySelection();
                 UpdateModeClock(snapshot);
                 Present(snapshot, success, _lastTelemetry);
                 if (!_closing) _timer.Start();
-                return true;
             }
             catch (Exception ex)
             {
                 PresentFailure(T("ModeError"), ex);
-                return false;
             }
             finally
             {
-                _requestInFlight = false;
-                SetButtons(!_closing);
+                EndOperatorRequest();
             }
         }
 
@@ -400,8 +431,20 @@ namespace SurfaceProFanControl
         {
             if (_closing) return;
             UpdateRpmDisplay();
-            if (_requestInFlight) return;
-            _requestInFlight = true;
+            if (_requestInFlight || _activePoll != null) return;
+            try
+            {
+                _activePoll = PollAsync();
+                await _activePoll;
+            }
+            finally
+            {
+                _activePoll = null;
+            }
+        }
+
+        private async Task<bool> PollAsync()
+        {
             var applyPolicy = _fanPolicyActive;
             try
             {
@@ -411,7 +454,7 @@ namespace SurfaceProFanControl
                 {
                     var monitoring = await telemetryTask;
                     PresentMonitoring(monitoring);
-                    return;
+                    return true;
                 }
 
                 var guardTask = Task.Run(() => applyPolicy ? _guard.SendHeartbeat() : _guard.ReadStatus());
@@ -432,13 +475,13 @@ namespace SurfaceProFanControl
                     }
                 }
                 var telemetry = MergeTelemetry(telemetryTask.Result, now);
-                if (_closing) return;
+                if (_closing) return false;
                 UpdateModeClock(snapshot);
                 if (!applyPolicy)
                 {
                     Present(snapshot, T("Ready"), telemetry);
                     LogAttachedMeasurement();
-                    return;
+                    return true;
                 }
 
                 var timedBoostActive = _boostEndsUtc.HasValue && now < _boostEndsUtc.Value;
@@ -499,6 +542,7 @@ namespace SurfaceProFanControl
                 UpdateBoostText();
                 Present(snapshot, BuildAutomationStatus(effectivePercent, timedBoostActive), telemetry);
                 LogAttachedMeasurement();
+                return true;
             }
             catch (Exception ex)
             {
@@ -515,10 +559,7 @@ namespace SurfaceProFanControl
                     }
                 }
                 PresentFailure(T("ModeError"), ex);
-            }
-            finally
-            {
-                _requestInFlight = false;
+                return false;
             }
         }
 
@@ -765,13 +806,20 @@ namespace SurfaceProFanControl
             AutomaticButton.IsEnabled = control;
             MeasureRpmButton.IsEnabled = control;
             HealthTestButton.IsEnabled = control;
+            ResetControlButton.IsEnabled = enabled;
+        }
+
+        private void MarkPolicySelectionChanged()
+        {
+            _policySelectionVersion++;
+            _fanPolicyActive = true;
         }
 
         private void ProfileComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_loadingSettings || !(ProfileComboBox.SelectedItem is Choice<CoolingProfileId> choice) ||
                 choice.Value == CoolingProfileId.Custom) return;
-            _fanPolicyActive = true;
+            MarkPolicySelectionChanged();
             _settings.UsePowerProfiles = false;
             _settings.CustomCurveEnabled = false;
             SetAggressiveness(CoolingProfileCatalog.Get(choice.Value).AggressivenessPercent, true);
@@ -783,7 +831,7 @@ namespace SurfaceProFanControl
         private void AggressivenessSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (_loadingSettings) return;
-            _fanPolicyActive = true;
+            MarkPolicySelectionChanged();
             _settings.CustomCurveEnabled = false;
             UpdateCurveControls();
             SetAggressiveness((int)Math.Round(e.NewValue), true);
@@ -807,7 +855,7 @@ namespace SurfaceProFanControl
                 AggressivenessTextBox.Text = _settings.CoolingAggressivenessPercent.ToString(CultureInfo.CurrentCulture);
                 return;
             }
-            _fanPolicyActive = true;
+            MarkPolicySelectionChanged();
             _settings.CustomCurveEnabled = false;
             UpdateCurveControls();
             SetAggressiveness(Math.Max(0, Math.Min(100, value)), true);
@@ -848,7 +896,7 @@ namespace SurfaceProFanControl
         private void PowerProfilesCheckBox_Changed(object sender, RoutedEventArgs e)
         {
             if (_loadingSettings) return;
-            _fanPolicyActive = true;
+            MarkPolicySelectionChanged();
             _settings.UsePowerProfiles = UsePowerProfilesCheckBox.IsChecked == true;
             if (_settings.UsePowerProfiles) _settings.CustomCurveEnabled = false;
             UpdatePowerProfileControls();
@@ -859,7 +907,7 @@ namespace SurfaceProFanControl
         private void PowerSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (_loadingSettings) return;
-            _fanPolicyActive = true;
+            MarkPolicySelectionChanged();
             _settings.AcAggressivenessPercent = (int)Math.Round(AcAggressivenessSlider.Value);
             _settings.BatteryAggressivenessPercent = (int)Math.Round(BatteryAggressivenessSlider.Value);
             UpdatePowerProfileControls();
@@ -891,7 +939,7 @@ namespace SurfaceProFanControl
         private void CustomCurveSetting_Changed(object sender, RoutedEventArgs e)
         {
             if (_loadingSettings) return;
-            _fanPolicyActive = true;
+            MarkPolicySelectionChanged();
             _settings.CustomCurveEnabled = CustomCurveEnabledCheckBox.IsChecked == true;
             _settings.PredictiveCoolingEnabled = PredictiveCoolingCheckBox.IsChecked == true;
             if (_settings.CustomCurveEnabled)
@@ -906,7 +954,7 @@ namespace SurfaceProFanControl
         private void CurveSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (_loadingSettings) return;
-            _fanPolicyActive = true;
+            MarkPolicySelectionChanged();
             var turnOn = (int)Math.Round(CurveTurnOnSlider.Value);
             var turnOff = (int)Math.Round(CurveTurnOffSlider.Value);
             if (turnOff > turnOn - 3)
@@ -932,7 +980,7 @@ namespace SurfaceProFanControl
         private void CurveDwellComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_loadingSettings || !(CurveDwellComboBox.SelectedItem is ComboBoxItem item)) return;
-            _fanPolicyActive = true;
+            MarkPolicySelectionChanged();
             _settings.CurveDwellSeconds = Convert.ToInt32(item.Tag, CultureInfo.InvariantCulture);
             SaveSettings();
             UpdateCurvePresentation(_lastTemperatureSignal);
@@ -1013,9 +1061,7 @@ namespace SurfaceProFanControl
 
         private async void MeasureRpmButton_Click(object sender, RoutedEventArgs e)
         {
-            if (_requestInFlight || !_hardwareSupport.CanControl) return;
-            _requestInFlight = true;
-            SetButtons(false);
+            if (!await BeginOperatorRequestAsync()) return;
             try
             {
                 var measured = await Task.Run(() => _guard.Measure());
@@ -1027,21 +1073,19 @@ namespace SurfaceProFanControl
             }
             finally
             {
-                _requestInFlight = false;
-                SetButtons(!_closing);
+                EndOperatorRequest();
             }
         }
 
         private async void HealthTestButton_Click(object sender, RoutedEventArgs e)
         {
-            if (_requestInFlight || !_hardwareSupport.CanControl) return;
-            _requestInFlight = true;
-            SetButtons(false);
+            if (!await BeginOperatorRequestAsync()) return;
             StatusText.Text = T("HealthTesting");
             var restoreMaximum = _lastKnownMaximum;
             try
             {
                 var baseline = await Task.Run(() => _guard.Measure());
+                if (_closing) return;
                 RecordRpmMeasurement(baseline);
                 restoreMaximum = baseline.IsMaximum;
                 await Task.Run(() => _guard.SetMaximum());
@@ -1049,6 +1093,7 @@ namespace SurfaceProFanControl
                 for (var sample = 0; sample < 6; sample++)
                 {
                     await Task.Delay(750);
+                    if (_closing) return;
                     await Task.Run(() => _guard.SendHeartbeat());
                 }
                 var peak = await Task.Run(() => _guard.Measure());
@@ -1073,7 +1118,9 @@ namespace SurfaceProFanControl
             {
                 try
                 {
-                    var restored = await Task.Run(() => restoreMaximum ? _guard.SetMaximum() : _guard.SetAutomatic());
+                    // A test that began in MAX already requested MAX. Respect any subsequent firmware recovery.
+                    var keepMaximum = restoreMaximum && !_closing;
+                    var restored = await Task.Run(() => keepMaximum ? _guard.ReadStatus() : _guard.SetAutomatic());
                     UpdateModeClock(restored);
                     Present(restored, StatusText.Text, MergeLastTelemetry(DateTime.UtcNow));
                 }
@@ -1081,8 +1128,7 @@ namespace SurfaceProFanControl
                 {
                     AppLogger.Error("Fan test state restoration failed; service failsafe remains active.", ex);
                 }
-                _requestInFlight = false;
-                SetButtons(!_closing);
+                EndOperatorRequest();
             }
         }
 
@@ -1100,7 +1146,7 @@ namespace SurfaceProFanControl
             try
             {
                 ProfileExchange.Import(dialog.FileName, _settings);
-                _fanPolicyActive = true;
+                MarkPolicySelectionChanged();
                 ApplySettingsToControls();
                 ApplyLocalization();
                 SaveSettings();
@@ -1129,14 +1175,10 @@ namespace SurfaceProFanControl
 
         private async void ResetControlButton_Click(object sender, RoutedEventArgs e)
         {
-            _boostEndsUtc = null;
-            _settings.UsePowerProfiles = false;
-            _settings.CustomCurveEnabled = false;
-            SetAggressiveness(0, true);
-            UpdatePowerProfileControls();
-            UpdateCurveControls();
-            SaveSettings();
-            if (_hardwareSupport.CanControl) await RunCommand(() => _guard.SetAutomatic(), T("PolicyAuto"));
+            if (_hardwareSupport.CanControl)
+                await RunCommand(() => _guard.SetAutomatic(), T("PolicyAuto"), () => SelectConstantPolicy(0));
+            else
+                SelectConstantPolicy(0);
         }
 
         private void LanguageComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1320,7 +1362,7 @@ namespace SurfaceProFanControl
 
         private void ApplyHotKeyProfile(CoolingProfileId id)
         {
-            _fanPolicyActive = true;
+            MarkPolicySelectionChanged();
             _settings.UsePowerProfiles = false;
             _settings.CustomCurveEnabled = false;
             SetAggressiveness(CoolingProfileCatalog.Get(id).AggressivenessPercent, true);
