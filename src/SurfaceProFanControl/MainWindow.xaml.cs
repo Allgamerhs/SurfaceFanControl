@@ -437,7 +437,11 @@ namespace SurfaceProFanControl
         {
             if (_closing) return;
             UpdateRpmDisplay();
-            if (_requestInFlight || _activePoll != null) return;
+            if (_requestInFlight || _activePoll != null)
+            {
+                RefreshSensorDisplay();
+                return;
+            }
             try
             {
                 _activePoll = PollAsync();
@@ -464,7 +468,15 @@ namespace SurfaceProFanControl
                 }
 
                 var guardTask = Task.Run(() => applyPolicy ? _guard.SendHeartbeat() : _guard.ReadStatus());
-                await Task.WhenAll(guardTask, telemetryTask);
+                try
+                {
+                    await Task.WhenAll(guardTask, telemetryTask);
+                }
+                finally
+                {
+                    if (telemetryTask.Status == TaskStatus.RanToCompletion)
+                        _lastRawTelemetry = telemetryTask.Result;
+                }
                 var snapshot = guardTask.Result;
                 if (_timerTicks % EcMeasurementIntervalTicks == 0)
                 {
@@ -485,8 +497,7 @@ namespace SurfaceProFanControl
                     }
                 }
                 var now = DateTime.UtcNow;
-                _lastRawTelemetry = telemetryTask.Result;
-                var telemetry = MergeTelemetry(_lastRawTelemetry, now);
+                var telemetry = MergeTelemetry(telemetryTask.Result, now);
                 if (_closing) return false;
                 UpdateModeClock(snapshot);
                 if (!applyPolicy)
@@ -576,6 +587,7 @@ namespace SurfaceProFanControl
                         AppLogger.Error("AUTO recovery after telemetry failure did not complete.", recoveryError);
                     }
                 }
+                RefreshSensorDisplay();
                 PresentFailure(T("ModeError"), ex);
                 return false;
             }
@@ -618,14 +630,9 @@ namespace SurfaceProFanControl
             }
             ModeText.Text = snapshot.IsMaximum ? T("ModeMaximum") : T("ModeAutomatic");
             ModeText.Foreground = Brushes.Black;
-            var temperature = liveTelemetry?.TemperatureCelsius;
-            var critical = liveTelemetry?.FirmwareCriticalCelsius;
-            TemperatureText.Text = temperature.HasValue ? temperature.Value.ToString("0.0", CultureInfo.CurrentCulture) + " °C" : "-- °C";
-            CriticalText.Text = " / " + T("Critical") + " " + (critical.HasValue ? critical.Value.ToString("0", CultureInfo.CurrentCulture) : "--");
             Fan0RpmText.Text = snapshot.IsMaximum ? "MAX" : "AUTO";
             Fan0DutyText.Text = " / " + (snapshot.IsMaximum ? T("TwoFansMaximum") : T("FirmwareManaged"));
-            PresentPower(liveTelemetry);
-            UpdateCurvePresentation(_lastTemperatureSignal);
+            PresentSensors(liveTelemetry);
             StatusText.Text = status;
             LastUpdateText.Text = DateTime.Now.ToString("HH:mm:ss", CultureInfo.CurrentCulture) + " • EC " +
                                   snapshot.Mode.ToString("X2", CultureInfo.InvariantCulture) + "/" +
@@ -638,25 +645,30 @@ namespace SurfaceProFanControl
             AddTemperature(telemetry.TemperatureCelsius, telemetry.Timestamp);
             if (_settings.TelemetryLoggingEnabled) _history.Append(telemetry, "MONITOR");
             ModeText.Text = T("MonitoringOnly").ToUpper(CultureInfo.CurrentCulture);
-            TemperatureText.Text = telemetry.TemperatureCelsius.HasValue
-                ? telemetry.TemperatureCelsius.Value.ToString("0.0", CultureInfo.CurrentCulture) + " °C"
-                : "-- °C";
-            CriticalText.Text = " / " + T("Critical") + " " +
-                                (telemetry.FirmwareCriticalCelsius?.ToString("0", CultureInfo.CurrentCulture) ?? "--");
             Fan0RpmText.Text = "--";
             Fan0DutyText.Text = " / " + T("MonitoringOnly");
-            PresentPower(telemetry);
-            UpdateCurvePresentation(TemperatureSignal.Empty);
+            PresentSensors(telemetry);
             StatusText.Text = T("DeviceMonitoringOnly");
             LastUpdateText.Text = DateTime.Now.ToString("HH:mm:ss", CultureInfo.CurrentCulture);
         }
 
-        private void PresentPower(TelemetrySnapshot? telemetry)
+        private void RefreshSensorDisplay()
         {
+            PresentSensors(MergeLastTelemetry(DateTime.UtcNow));
+            DrawTemperatureGraph();
+        }
+
+        private void PresentSensors(TelemetrySnapshot? telemetry)
+        {
+            var temperature = telemetry?.TemperatureCelsius;
+            var critical = telemetry?.FirmwareCriticalCelsius;
+            TemperatureText.Text = temperature.HasValue ? temperature.Value.ToString("0.0", CultureInfo.CurrentCulture) + " °C" : "-- °C";
+            CriticalText.Text = " / " + T("Critical") + " " + (critical?.ToString("0", CultureInfo.CurrentCulture) ?? "--");
             Fan1RpmText.Text = telemetry?.CpuLoadPercent.HasValue == true ? telemetry.CpuLoadPercent.Value + " %" : "-- %";
             var power = telemetry?.OnAcPower is bool ac ? T(ac ? "OnAc" : "OnBattery") : "--";
             if (telemetry?.BatteryPercent.HasValue == true) power += " " + telemetry.BatteryPercent.Value + "%";
             Fan1DutyText.Text = " / " + power;
+            UpdateCurvePresentation(_lastTemperatureSignal);
         }
 
         private void RecordEcMeasurement(FanGuardSnapshot measured)

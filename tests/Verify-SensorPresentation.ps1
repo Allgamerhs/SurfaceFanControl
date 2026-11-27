@@ -97,6 +97,50 @@ try {
     Assert ($figures.Count -eq 3) "Expected three separate graph lines. Geometry: $geometry"
     foreach ($figure in $figures) { Assert ($figure.Contains('L')) 'A graph segment lost its valid measurements.' }
 
+    # Drive the real dispatcher tick while a poll is unfinished. Age EC and ACPI separately
+    # to exercise their independent acquisition times without waiting or contacting hardware.
+    $settings.TelemetryLoggingEnabled = $false
+    $now = [datetime]::UtcNow
+    $old = $now.AddMinutes(-1)
+    $raw = Raw 54 93 $true $now
+    $ec = $parse.Invoke($null, @('OK|AUTO|702|451|0|0|72|101|00|00'))
+    Call 'RecordEcMeasurement' @($ec)
+    Set-Field '_lastRawTelemetry' $raw
+    Call 'Present' @($ec, 'Synthetic ready', (Call 'MergeTelemetry' @($raw, [datetime]::UtcNow)))
+    $degree = [char]0xB0
+    $freshPower = (Field 'Fan1DutyText').Text
+    Assert ((Field 'TemperatureText').Text -match '^72[.,]0 ' -and $freshPower.Contains('72%')) 'Fixture must show live EC temperature and battery.'
+
+    $pending = [Threading.Tasks.TaskCompletionSource[bool]]::new()
+    Set-Field '_activePoll' $pending.Task
+    $agedTracker = [SurfaceProFanControl.Core.TemperatureSignalTracker]::new()
+    $agedTracker.Add(72, $old)
+    Set-Field '_temperatureSignalTracker' $agedTracker
+    Set-Field '_ecTemperatureTimeUtc' $old
+    Call 'Timer_Tick' @($null, [EventArgs]::Empty)
+    Assert ((Field 'TemperatureText').Text -match '^54[.,]0 ' -and (Field 'CriticalText').Text.EndsWith('93')) 'Busy tick did not fall back to independently fresh ACPI readings.'
+    Assert ((Field 'TemperatureText').ToolTip.StartsWith((Caption 'SensorAcpi')) -and (Field 'CurveCurrentMarker').Visibility -eq 'Visible') 'ACPI fallback lost its source or curve marker.'
+
+    $thermalStamp = $raw.GetType().GetField('<TemperatureTimestamp>k__BackingField', $flags)
+    $thermalStamp.SetValue($raw, $old)
+    Call 'Timer_Tick' @($null, [EventArgs]::Empty)
+    Assert ((Field 'TemperatureText').Text -ceq "-- ${degree}C" -and (Field 'CriticalText').Text.EndsWith('--')) 'Expired temperature or critical limit stayed visible while a poll was busy.'
+    Assert ((Field 'TemperatureText').ToolTip -ceq (Caption 'SensorUnavailable') -and (Field 'CurveSensorText').Text -ceq (Caption 'SensorUnavailable') -and (Field 'CurveCurrentMarker').Visibility -eq 'Collapsed') 'Expired temperature still looks live on the curve or tooltip.'
+    Assert ((Field 'Fan1RpmText').Text -ceq '37 %' -and (Field 'Fan1DutyText').Text -ceq $freshPower) 'Thermal expiry removed independently fresh CPU or power data.'
+
+    $raw.GetType().GetField('<Timestamp>k__BackingField', $flags).SetValue($raw, $old)
+    Call 'Timer_Tick' @($null, [EventArgs]::Empty)
+    Assert ((Field 'Fan1RpmText').Text -ceq '-- %' -and (Field 'Fan1DutyText').Text.Trim() -ceq '/ --') 'Expired CPU load or battery state stayed visible.'
+    Assert ((Field 'StatusText').Text -ceq 'Synthetic ready') 'A busy display refresh overwrote operator status.'
+
+    $pending.SetResult($true)
+    Set-Field '_activePoll' $null
+    $resumed = Raw 61 95 $false ([datetime]::UtcNow)
+    Set-Field '_lastRawTelemetry' $resumed
+    Call 'Present' @($ec, 'Synthetic ready', (Call 'MergeTelemetry' @($resumed, [datetime]::UtcNow)))
+    Assert ((Field 'TemperatureText').Text -match '^61[.,]0 ' -and (Field 'CriticalText').Text.EndsWith('95') -and (Field 'CurveCurrentMarker').Visibility -eq 'Visible') 'Fresh temperature and marker did not return after the poll resumed.'
+    Assert ((Field 'TemperatureText').ToolTip.StartsWith((Caption 'SensorAcpi')) -and (Field 'Fan1DutyText').Text.Contains((Caption 'OnBattery'))) 'Recovered source or power state was not displayed.'
+
     $settings.UsePowerProfiles = $true
     $settings.CustomCurveEnabled = $false
     $settings.AcAggressivenessPercent = 95
@@ -109,7 +153,7 @@ try {
     $general = [SurfaceProFanControl.Core.CoolingProfileCatalog]::Get('Balanced').AggressivenessPercent
     Assert (!$settings.UsePowerProfiles -and !$settings.CustomCurveEnabled -and !(Field 'UsePowerProfilesCheckBox').IsChecked) 'Selecting a general preset left power overrides active.'
     Assert ((Call 'EffectiveAggressiveness' @($ac)) -eq $general -and (Call 'EffectiveAggressiveness' @($battery)) -eq $general) 'The new general profile was not effective on AC and battery.'
-    'PASS: compiled WPF session RPM peaks, EC/ACPI temperature and expiry, graph gaps, general profile precedence.'
+    'PASS: compiled WPF session RPM peaks, EC/ACPI temperature, busy-poll display expiry and recovery, graph gaps, general profile precedence.'
 } finally {
     if ($source) { $source.Dispose() }
     [IO.File]::Delete($logPath)
