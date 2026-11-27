@@ -177,8 +177,12 @@ internal sealed class FanGuardRuntime
     private readonly FanGuardJournal _journal = new FanGuardJournal();
     private readonly Func<long> _pulseFailsafe;
     private readonly Func<bool> _isFailsafeAlive;
+    private readonly Func<FanGuardStatus?> _readSensorSample;
+    private readonly Action<string> _logMeasurement;
     private FanModeStatus _lastVerifiedStatus = new FanModeStatus(0x00, 0x00);
     private bool _maximumActive;
+    private string? _measurementConflict;
+    private long _lastConflictProbe;
     private long _lastHeartbeatTimestamp;
     private long _lastFailsafeAcknowledgeTimestamp;
     private string? _leaseId;
@@ -193,6 +197,8 @@ internal sealed class FanGuardRuntime
     {
         _pulseFailsafe = pulseFailsafe ?? throw new ArgumentNullException(nameof(pulseFailsafe));
         _isFailsafeAlive = isFailsafeAlive ?? throw new ArgumentNullException(nameof(isFailsafeAlive));
+        _readSensorSample = ReadHardwareSample;
+        _logMeasurement = GuardLog.Info;
     }
 
     public void Run(CancellationToken cancellationToken)
@@ -351,6 +357,7 @@ internal sealed class FanGuardRuntime
             {
                 case "MAX":
                     var requestedLease = ParseLease(fields);
+                    if (_measurementConflict != null) return _measurementConflict;
                     if (_maximumActive && !string.Equals(_leaseId, requestedLease, StringComparison.Ordinal))
                     {
                         return "ERR|LEASE_MISMATCH|Maximum mode belongs to another live controller.";
@@ -404,12 +411,7 @@ internal sealed class FanGuardRuntime
                     return FormatStatus(RequireCachedStatus(true), "MAX");
 
                 case "AUTO":
-                    _lastVerifiedStatus = ExecuteOneShot(
-                        controller => controller.ForceAutomaticModeAndReport());
-                    _journal.Clear();
-                    _maximumActive = false;
-                    _leaseId = null;
-                    _lastFailsafeAcknowledgeTimestamp = 0;
+                    AcceptAutomatic(ExecuteOneShot(controller => controller.ForceAutomaticModeAndReport()));
                     GuardLog.Info("Firmware automatic mode restored by request.");
                     return FormatStatus(_lastVerifiedStatus, "AUTO");
 
@@ -417,15 +419,7 @@ internal sealed class FanGuardRuntime
                     return ReadAndValidateStatus();
 
                 case "MEASURE":
-                    var measured = TryExecuteOneShot(controller => controller.ReadGuardStatus(), measurement: true);
-                    if (measured == null)
-                        return "ERR|SAMPLE_BUSY|Sensor bus busy; no new measurement.";
-                    if ((_maximumActive && !measured.IsMaximum) ||
-                        (!_maximumActive && !measured.IsAutomatic))
-                    {
-                        throw new InvalidDataException("The measured fan state did not match guard ownership.");
-                    }
-                    return FormatMeasuredStatus(measured, _maximumActive ? "MAX" : "AUTO");
+                    return ReadCurrentMeasurement();
 
                 case "PING":
                     var pingLease = ParseLease(fields);
@@ -434,7 +428,7 @@ internal sealed class FanGuardRuntime
                         return "ERR|LEASE_MISMATCH|Heartbeat lease is not current.";
                     }
                     var pingStatus = ReadAndValidateStatus();
-                    if (_maximumActive)
+                    if (_maximumActive && _measurementConflict == null)
                     {
                         _lastHeartbeatTimestamp = Stopwatch.GetTimestamp();
                     }
@@ -504,12 +498,7 @@ internal sealed class FanGuardRuntime
                         GuardLog.Info("Cached maximum-mode acknowledgement was lost; restoring automatic mode.");
                     }
 
-                    _lastVerifiedStatus = ExecuteOneShot(
-                        controller => controller.ForceAutomaticModeAndReport());
-                    _journal.Clear();
-                    _maximumActive = false;
-                    _leaseId = null;
-                    _lastFailsafeAcknowledgeTimestamp = 0;
+                    AcceptAutomatic(ExecuteOneShot(controller => controller.ForceAutomaticModeAndReport()));
                     GuardLog.Info("Heartbeat expired; firmware automatic mode restored.");
                 }
             }
@@ -670,8 +659,82 @@ internal sealed class FanGuardRuntime
 
     private string ReadAndValidateStatus()
     {
+        if (_measurementConflict != null)
+        {
+            // With no owned lease, retry a read occasionally so that an independently
+            // restored firmware mode can be recognized without issuing any command.
+            if (!_maximumActive && ElapsedSince(_lastConflictProbe, Stopwatch.GetTimestamp()) >= TimeSpan.FromSeconds(5))
+            {
+                _lastConflictProbe = Stopwatch.GetTimestamp();
+                return ReadCurrentMeasurement();
+            }
+            return _measurementConflict;
+        }
         var status = RequireCachedStatus(_maximumActive);
         return FormatStatus(status, _maximumActive ? "MAX" : "AUTO");
+    }
+
+    private FanGuardStatus? ReadHardwareSample() =>
+        TryExecuteOneShot(controller => controller.ReadGuardStatus(), measurement: true);
+
+    private string ReadCurrentMeasurement()
+    {
+        var ownedBeforeRead = _maximumActive;
+        var hadConflict = _measurementConflict != null;
+        try { return ReadAndReconcileMeasurement(); }
+        finally
+        {
+            if (ownedBeforeRead && !_maximumActive)
+                _logMeasurement("Two hardware reads confirmed firmware AUTO while MAX was owned; released the lease.");
+            else if (!hadConflict && _measurementConflict != null)
+                _logMeasurement("Hardware mode conflict detected. " + _measurementConflict);
+        }
+    }
+
+    private string ReadAndReconcileMeasurement()
+    {
+        var sample = _readSensorSample();
+        if (sample == null) return "ERR|SAMPLE_BUSY|Sensor bus busy; no new measurement.";
+        if (_maximumActive && sample.IsAutomatic)
+        {
+            RecordConflict(sample);
+            // Reopen the sensor bus and verify both firmware mode registers independently.
+            // Keep the dirty marker until the complete confirming read has returned.
+            var confirmation = _readSensorSample();
+            if (confirmation == null) return _measurementConflict!;
+            if (!confirmation.IsAutomatic) return RecordConflict(confirmation, "First hardware read was 00/00.");
+            AcceptAutomatic(new FanModeStatus(confirmation.Mode, confirmation.ModeShadow));
+            return FormatMeasuredStatus(confirmation, "AUTO");
+        }
+        if (_maximumActive ? !sample.IsMaximum : !sample.IsAutomatic) return RecordConflict(sample);
+        if (_journal.Exists != _maximumActive)
+            return RecordConflict(sample, "The durable marker disagrees with guard ownership.");
+        _lastVerifiedStatus = new FanModeStatus(sample.Mode, sample.ModeShadow);
+        _measurementConflict = null;
+        return FormatMeasuredStatus(sample, _maximumActive ? "MAX" : "AUTO");
+    }
+
+    private string RecordConflict(FanGuardStatus sample, string? context = null)
+    {
+        var snapshot = sample.Snapshot;
+        var detail = string.Format(CultureInfo.InvariantCulture,
+            "Guard expected {0}; measured mode/shadow {1:X2}/{2:X2}, fan command/duty {3:X2}/{4:X2} and {5:X2}/{6:X2}.",
+            _maximumActive ? "MAX" : "AUTO", sample.Mode, sample.ModeShadow,
+            snapshot.Fan0Command, snapshot.Reading.Fan0DutyRaw, snapshot.Fan1Command, snapshot.Reading.Fan1DutyRaw);
+        _lastConflictProbe = Stopwatch.GetTimestamp();
+        _measurementConflict = "ERR|MODE_CONFLICT|" + detail + (context == null ? string.Empty : " " + context);
+        return _measurementConflict;
+    }
+
+    private void AcceptAutomatic(FanModeStatus status)
+    {
+        if (!status.IsAutomatic) throw new InvalidDataException("Hardware AUTO acknowledgement was incomplete.");
+        _lastVerifiedStatus = status;
+        _journal.Clear();
+        _maximumActive = false;
+        _leaseId = null;
+        _lastFailsafeAcknowledgeTimestamp = 0;
+        _measurementConflict = null;
     }
 
     private FanModeStatus RequireCachedStatus(bool maximumExpected)

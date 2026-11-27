@@ -27,6 +27,7 @@ internal static class FanGuardFailsafeSelfTests
         completed++;
         MonotonicAcknowledgeLeaseRejectsStaleTicks();
         completed++;
+        completed += FanGuardMeasurementSelfTests.Run();
         return completed;
     }
 
