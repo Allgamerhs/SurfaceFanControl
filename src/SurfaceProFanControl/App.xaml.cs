@@ -50,7 +50,8 @@ namespace SurfaceProFanControl
                 return;
             }
 
-            if (!DistributionProfile.IsPortable &&
+            var useRunningService = !DistributionProfile.IsPortable && IsVersionAlongsideInstall();
+            if (!useRunningService && !DistributionProfile.IsPortable &&
                 !FanGuardServiceManager.IsRunningFromSecureInstall &&
                 File.Exists(FanGuardServiceManager.InstalledApplicationPath))
             {
@@ -90,12 +91,18 @@ namespace SurfaceProFanControl
                         "portable-windows-monitor",
                         "DeviceMonitoringOnly")
                     : HardwareSupport.Detect(device.Identity);
-                if (hardwareSupport.CanControl)
+                FanGuardClient? existingGuard = null;
+                if (useRunningService && hardwareSupport.CanControl)
+                {
+                    existingGuard = FanGuardClient.ConnectToExistingService();
+                }
+                else if (hardwareSupport.CanControl)
                 {
                     FanGuardServiceManager.EnsureReady();
                 }
 
-                var window = new MainWindow(device, hardwareSupport, startupLaunch);
+                var window = new MainWindow(device, hardwareSupport, startupLaunch, existingGuard);
+                if (existingGuard != null) window.StatusTab.IsSelected = true;
                 MainWindow = window;
                 window.Show();
             }
@@ -109,6 +116,15 @@ namespace SurfaceProFanControl
                     MessageBoxImage.Error);
                 Shutdown(1);
             }
+        }
+
+        // A version staged beside the installed UI uses the running service without reconfiguring it.
+        private static bool IsVersionAlongsideInstall()
+        {
+            var version = typeof(App).Assembly.GetName().Version.ToString(3);
+            var directory = Path.Combine(FanGuardServiceManager.ApplicationInstallDirectory, "Versions", version);
+            var actual = Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory).TrimEnd(Path.DirectorySeparatorChar);
+            return string.Equals(directory, actual, StringComparison.OrdinalIgnoreCase);
         }
 
         private void RunHeadless(string[] args)

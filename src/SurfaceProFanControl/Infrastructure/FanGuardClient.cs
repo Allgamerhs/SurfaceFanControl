@@ -16,6 +16,18 @@ namespace SurfaceProFanControl.Infrastructure
         private static readonly TimeSpan ExchangeTimeout = TimeSpan.FromSeconds(5);
         private const int MaximumResponseBytes = 1024;
         private readonly string _leaseId = Guid.NewGuid().ToString("N");
+        private readonly string _guardPath;
+
+        public FanGuardClient() : this(FanGuardServiceManager.PackagedGuardPath) { }
+
+        private FanGuardClient(string guardPath) => _guardPath = guardPath;
+
+        public static FanGuardClient ConnectToExistingService()
+        {
+            var client = new FanGuardClient(FanGuardServiceManager.ResolveExistingGuardPath());
+            client.ReadStatus();
+            return client;
+        }
 
         public FanGuardSnapshot ReadStatus() => Send("STATUS");
 
@@ -27,7 +39,7 @@ namespace SurfaceProFanControl.Infrastructure
 
         public FanGuardSnapshot Measure() => Send("MEASURE");
 
-        private static FanGuardSnapshot Send(string request)
+        private FanGuardSnapshot Send(string request)
         {
             using (var timeout = new CancellationTokenSource(ExchangeTimeout))
             {
@@ -42,7 +54,7 @@ namespace SurfaceProFanControl.Infrastructure
             }
         }
 
-        private static async Task<FanGuardSnapshot> SendAsync(string request, CancellationToken cancellationToken)
+        private async Task<FanGuardSnapshot> SendAsync(string request, CancellationToken cancellationToken)
         {
             using (var pipe = new NamedPipeClientStream(
                        ".",
@@ -52,30 +64,21 @@ namespace SurfaceProFanControl.Infrastructure
             using (cancellationToken.Register(pipe.Dispose))
             {
                 await pipe.ConnectAsync(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
-                FanGuardPipeIdentity.VerifyConnectedServer(
-                    pipe,
-                    Path.Combine(FanGuardServiceManager.SecureInstallDirectory, "SurfaceProFanGuard.exe"));
+                FanGuardPipeIdentity.VerifyConnectedServer(pipe, _guardPath);
+                FanGuardServiceManager.VerifyVersion17Guard(_guardPath);
 
+                // The existing guard disconnects immediately after its reply. Have a read pending
+                // before the unbuffered pipe write, so even a fast STATUS reply reaches the client.
                 var requestBytes = new UTF8Encoding(false).GetBytes(request + "\n");
-                await pipe.WriteAsync(requestBytes, 0, requestBytes.Length, cancellationToken).ConfigureAwait(false);
-                await pipe.FlushAsync(cancellationToken).ConfigureAwait(false);
-
                 var responseBytes = new byte[MaximumResponseBytes];
+                var firstRead = pipe.ReadAsync(responseBytes, 0, responseBytes.Length, cancellationToken);
+                var write = pipe.WriteAsync(requestBytes, 0, requestBytes.Length, cancellationToken);
+                await Task.WhenAll(firstRead, write).ConfigureAwait(false);
+                var read = await firstRead.ConfigureAwait(false);
                 var count = 0;
                 var terminated = false;
-                while (count < responseBytes.Length)
+                while (read > 0)
                 {
-                    var read = await pipe.ReadAsync(
-                            responseBytes,
-                            count,
-                            responseBytes.Length - count,
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                    if (read == 0)
-                    {
-                        break;
-                    }
-
                     var newline = Array.IndexOf(responseBytes, (byte)'\n', count, read);
                     if (newline >= 0)
                     {
@@ -84,6 +87,9 @@ namespace SurfaceProFanControl.Infrastructure
                         break;
                     }
                     count += read;
+                    if (count == responseBytes.Length) break;
+                    read = await pipe.ReadAsync(responseBytes, count, responseBytes.Length - count, cancellationToken)
+                        .ConfigureAwait(false);
                 }
 
                 if (!terminated && count == responseBytes.Length)

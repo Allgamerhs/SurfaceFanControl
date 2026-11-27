@@ -18,6 +18,7 @@ namespace SurfaceProFanControl.Infrastructure
         private const string InstallRegistryKey = @"SOFTWARE\SurfaceFanControl";
         private const string InstallLocationValue = "InstallLocation";
         private const string ExpectedDriverSha256 = "11BD2C9F9E2397C9A16E0990E4ED2CF0679498FE0FD418A3DFDAC60B5C160EE5";
+        private const string Version17GuardSha256 = "D46E395FE488DDF87E4DD380D9C724296F44733C3E672E2225A3E9BBC9DAE8EC";
 
         public static string ApplicationInstallDirectory => ReadApplicationInstallDirectory();
 
@@ -35,6 +36,39 @@ namespace SurfaceProFanControl.Infrastructure
             StringComparison.OrdinalIgnoreCase);
 
         public static string InstalledApplicationPath => Path.Combine(ApplicationInstallDirectory, "SurfaceProFanControl.exe");
+
+        internal static string PackagedGuardPath => Path.Combine(SecureInstallDirectory, "SurfaceProFanGuard.exe");
+
+        private static string Version17GuardPath => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            "SurfaceProFanControl", "SurfaceProFanGuard.exe");
+
+        internal static string ResolveExistingGuardPath()
+        {
+            using (var controller = new ServiceController(GuardServiceName))
+            {
+                if (controller.Status != ServiceControllerStatus.Running)
+                    throw new InvalidOperationException("Fan koruma hizmeti çalışmıyor.");
+            }
+
+            var service = ReadService(GuardServiceName, systemDriver: false);
+            if (!service.Exists || !string.Equals(service.StartName, "LocalSystem", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Kurulu fan koruma hizmetinin kimliği doğrulanamadı.");
+
+            foreach (var path in new[] { PackagedGuardPath, Version17GuardPath })
+            {
+                if (string.Equals(service.RawPath.Trim(), Quote(path) + " --service", StringComparison.OrdinalIgnoreCase))
+                    return path;
+            }
+            throw new InvalidDataException("Kurulu fan koruma hizmetinin dosya yolu doğrulanamadı.");
+        }
+
+        internal static void VerifyVersion17Guard(string path)
+        {
+            if (PathsEqual(path, Version17GuardPath) &&
+                !string.Equals(ComputeSha256(path), Version17GuardSha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Kurulu 1.7.0 fan koruma hizmetinin SHA-256 doğrulaması başarısız.");
+        }
 
         public static void EnsureReady()
         {
