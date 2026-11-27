@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Pipes;
@@ -102,6 +103,10 @@ namespace SurfaceProFanControl.Infrastructure
 
     public sealed class FanGuardSnapshot
     {
+        private readonly Stopwatch _age = Stopwatch.StartNew();
+        public DateTime ReceivedAtUtc { get; } = DateTime.UtcNow;
+        public TimeSpan Age => _age.Elapsed;
+
         private FanGuardSnapshot(
             string state,
             int fan0Rpm,

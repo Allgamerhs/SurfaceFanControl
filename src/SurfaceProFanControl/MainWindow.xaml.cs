@@ -30,7 +30,7 @@ namespace SurfaceProFanControl
         private const int HotKeyBalanced = 103;
         private const int HotKeyMaximum = 104;
         private const int EcMeasurementIntervalTicks = 5;
-        private static readonly TimeSpan TemperatureStaleAfter = TimeSpan.FromSeconds(20);
+        private static readonly TimeSpan EcSampleStaleAfter = TimeSpan.FromSeconds(20);
 
         private readonly FanGuardClient _guard = new FanGuardClient();
         private readonly TelemetryService _telemetry = new TelemetryService();
@@ -44,6 +44,7 @@ namespace SurfaceProFanControl
         private readonly ThermalSafetyController _emergencyController = new ThermalSafetyController(82, 74, 3);
         private readonly DateTime _profileArmUtc;
         private TelemetrySnapshot? _lastTelemetry;
+        private FanGuardSnapshot? _lastRpmMeasurement;
         private TemperatureSignal _lastTemperatureSignal = TemperatureSignal.Empty;
         private double? _lastEcCriticalCelsius;
         private DateTime _modeChangedUtc = DateTime.UtcNow;
@@ -182,6 +183,7 @@ namespace SurfaceProFanControl
             Fan1MeasureLabel.Text = T("Fan2") + ": ";
             MeasureRpmButton.Content = T("MeasureRpm");
             HealthTestButton.Content = T("HealthTest");
+            UpdateRpmDisplay();
             OpenTelemetryButton.Content = T("OpenTelemetry");
             StartWithWindowsCheckBox.Content = T("StartWithWindows");
             StartMinimizedCheckBox.Content = T("StartMinimized");
@@ -277,7 +279,7 @@ namespace SurfaceProFanControl
                     try
                     {
                         var measured = await Task.Run(() => _guard.Measure());
-                        RecordEcMeasurement(measured, updateRpmDisplay: true);
+                        RecordEcMeasurement(measured);
                         snapshot = measured;
                     }
                     catch (Exception ex)
@@ -374,7 +376,9 @@ namespace SurfaceProFanControl
 
         private async void Timer_Tick(object? sender, EventArgs e)
         {
-            if (_requestInFlight || _closing) return;
+            if (_closing) return;
+            UpdateRpmDisplay();
+            if (_requestInFlight) return;
             _requestInFlight = true;
             try
             {
@@ -396,7 +400,7 @@ namespace SurfaceProFanControl
                     try
                     {
                         var measured = await Task.Run(() => _guard.Measure());
-                        RecordEcMeasurement(measured, updateRpmDisplay: true);
+                        RecordEcMeasurement(measured);
                         snapshot = measured;
                     }
                     catch (Exception ex)
@@ -569,7 +573,7 @@ namespace SurfaceProFanControl
             Fan1DutyText.Text = " / " + power;
         }
 
-        private void RecordEcMeasurement(FanGuardSnapshot measured, bool updateRpmDisplay)
+        private void RecordEcMeasurement(FanGuardSnapshot measured)
         {
             var now = DateTime.UtcNow;
             _temperatureSignalTracker.Add(measured.TemperatureCelsius, now);
@@ -577,19 +581,38 @@ namespace SurfaceProFanControl
             {
                 _lastEcCriticalCelsius = measured.CriticalCelsius;
             }
-            _lastTemperatureSignal = _temperatureSignalTracker.Read(now, TemperatureStaleAfter);
-            if (updateRpmDisplay)
+            _lastTemperatureSignal = _temperatureSignalTracker.Read(now, EcSampleStaleAfter);
+            RecordRpmMeasurement(measured);
+        }
+
+        private void RecordRpmMeasurement(FanGuardSnapshot measured)
+        {
+            _lastRpmMeasurement = measured;
+            UpdateRpmDisplay();
+        }
+
+        private void UpdateRpmDisplay()
+        {
+            var sample = _lastRpmMeasurement;
+            var current = sample != null && sample.Age < EcSampleStaleAfter ? sample : null;
+            var culture = CultureInfo.CurrentCulture;
+            MeasuredFan0Text.Text = (current?.Fan0Rpm.ToString("N0", culture) ?? "--") + " RPM";
+            MeasuredFan1Text.Text = (current?.Fan1Rpm.ToString("N0", culture) ?? "--") + " RPM";
+            if (sample == null)
             {
-                MeasuredFan0Text.Text = measured.Fan0Rpm.ToString("N0", CultureInfo.CurrentCulture) + " RPM";
-                MeasuredFan1Text.Text = measured.Fan1Rpm.ToString("N0", CultureInfo.CurrentCulture) + " RPM";
-                LastMeasurementText.Text = T("SensorEc") + " • " + DateTime.Now.ToString("HH:mm:ss", CultureInfo.CurrentCulture) +
-                                           " • " + measured.Fan0Duty + "/" + measured.Fan1Duty;
+                LastMeasurementText.Text = T("RpmDataStale");
+                return;
             }
+            var time = sample.ReceivedAtUtc.ToLocalTime().ToString("HH:mm:ss", culture);
+            var last = string.Format(culture, T("LastRpmMeasurement"), time);
+            LastMeasurementText.Text = current == null
+                ? T("RpmDataStale") + " • " + last
+                : last + " • " + T("SensorEc") + " " + current.Fan0Duty + "/" + current.Fan1Duty;
         }
 
         private TelemetrySnapshot MergeTelemetry(TelemetrySnapshot telemetry, DateTime nowUtc)
         {
-            _lastTemperatureSignal = _temperatureSignalTracker.Read(nowUtc, TemperatureStaleAfter);
+            _lastTemperatureSignal = _temperatureSignalTracker.Read(nowUtc, EcSampleStaleAfter);
             var temperature = _lastTemperatureSignal.ControlTemperatureCelsius ?? telemetry.TemperatureCelsius;
             var critical = _lastEcCriticalCelsius ?? telemetry.FirmwareCriticalCelsius;
             return new TelemetrySnapshot(
@@ -952,6 +975,7 @@ namespace SurfaceProFanControl
             try
             {
                 var baseline = await Task.Run(() => _guard.Measure());
+                RecordRpmMeasurement(baseline);
                 await Task.Run(() => _guard.SetMaximum());
                 for (var sample = 0; sample < 6; sample++)
                 {
@@ -969,7 +993,6 @@ namespace SurfaceProFanControl
                     result = T("HealthFailed");
                 else
                     result = T("HealthInconclusive");
-                LastMeasurementText.Text = result;
                 StatusText.Text = result;
                 Notify(T("HealthTest"), result);
             }
@@ -983,7 +1006,7 @@ namespace SurfaceProFanControl
                 {
                     var restored = await Task.Run(() => restoreMaximum ? _guard.SetMaximum() : _guard.SetAutomatic());
                     UpdateModeClock(restored);
-                    Present(restored, LastMeasurementText.Text, MergeLastTelemetry(DateTime.UtcNow));
+                    Present(restored, StatusText.Text, MergeLastTelemetry(DateTime.UtcNow));
                 }
                 catch (Exception ex)
                 {
@@ -996,13 +1019,9 @@ namespace SurfaceProFanControl
 
         private void PresentMeasurement(FanGuardSnapshot measured, string prefix)
         {
-            RecordEcMeasurement(measured, updateRpmDisplay: false);
-            MeasuredFan0Text.Text = measured.Fan0Rpm.ToString("N0", CultureInfo.CurrentCulture) + " RPM";
-            MeasuredFan1Text.Text = measured.Fan1Rpm.ToString("N0", CultureInfo.CurrentCulture) + " RPM";
-            LastMeasurementText.Text = prefix + " • " + DateTime.Now.ToString("HH:mm:ss", CultureInfo.CurrentCulture) +
-                                       " • " + measured.Fan0Duty + "/" + measured.Fan1Duty;
+            RecordEcMeasurement(measured);
             UpdateModeClock(measured);
-            Present(measured, LastMeasurementText.Text, MergeLastTelemetry(DateTime.UtcNow));
+            Present(measured, prefix + " • " + LastMeasurementText.Text, MergeLastTelemetry(DateTime.UtcNow));
         }
 
         private void ImportProfileButton_Click(object sender, RoutedEventArgs e)

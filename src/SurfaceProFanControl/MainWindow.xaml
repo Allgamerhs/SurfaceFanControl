@@ -199,7 +199,8 @@
                         <Button x:Name="HealthTestButton" Grid.Column="1" Content="Fan test" Margin="2,0" Click="HealthTestButton_Click" />
                         <Button x:Name="OpenTelemetryButton" Grid.Column="2" Content="Open CSV" Margin="2,0,0,0" Click="OpenTelemetryButton_Click" />
                     </Grid>
-                    <TextBlock x:Name="LastMeasurementText" Grid.Row="4" Text="No measurement yet" VerticalAlignment="Center" Foreground="#404040" TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="LastMeasurementText" Grid.Row="4" VerticalAlignment="Center" Foreground="#404040"
+                               TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
                 </Grid>
             </TabItem>
 
