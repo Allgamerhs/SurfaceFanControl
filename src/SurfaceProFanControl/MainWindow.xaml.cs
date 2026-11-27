@@ -47,7 +47,7 @@ namespace SurfaceProFanControl
         private FanGuardSnapshot? _lastRpmMeasurement;
         private FanGuardSnapshot? _lastLoggedMeasurement;
         private int _loggedAttachmentMeasurements;
-        private bool _resumedSavedProfile;
+        private bool _logResumedProfileMeasurements;
         private TemperatureSignal _lastTemperatureSignal = TemperatureSignal.Empty;
         private double? _lastEcCriticalCelsius;
         private DateTime _modeChangedUtc = DateTime.UtcNow;
@@ -113,9 +113,9 @@ namespace SurfaceProFanControl
 
         private string T(string key) => LocalizationService.Text(key);
 
-        internal void ResumeSavedProfile()
+        internal void ResumeSavedProfile(bool logMeasurements)
         {
-            _resumedSavedProfile = true;
+            _logResumedProfileMeasurements = logMeasurements;
             _fanPolicyActive = true;
         }
 
@@ -646,10 +646,10 @@ namespace SurfaceProFanControl
             if (_closing || sample == null || sample.Age >= EcSampleStaleAfter || sample == _lastLoggedMeasurement ||
                 !MeasureRpmButton.IsEnabled)
                 return;
-            if (!_resumedSavedProfile && (_fanPolicyActive || !StatusTab.IsSelected || !LastMeasurementText.IsVisible ||
+            if (!_logResumedProfileMeasurements && (_fanPolicyActive || !StatusTab.IsSelected || !LastMeasurementText.IsVisible ||
                 !MeasuredFan0Text.IsVisible || !MeasuredFan1Text.IsVisible))
                 return;
-            if (_loggedAttachmentMeasurements >= 2 && (!_resumedSavedProfile ||
+            if (_loggedAttachmentMeasurements >= 2 && (!_logResumedProfileMeasurements ||
                 _lastLoggedMeasurement?.Age < TimeSpan.FromMinutes(1)))
                 return;
 
@@ -661,7 +661,7 @@ namespace SurfaceProFanControl
                 $"visible(time/fan1/fan2)={LastMeasurementText.IsVisible}/{MeasuredFan0Text.IsVisible}/{MeasuredFan1Text.IsVisible} " +
                 $"enabled(measure/test/maximum/automatic/boost)={MeasureRpmButton.IsEnabled}/{HealthTestButton.IsEnabled}/" +
                 $"{ConstantMaximumButton.IsEnabled}/{AutomaticButton.IsEnabled}/{TimedBoostButton.IsEnabled} " +
-                $"resumedProfile={_resumedSavedProfile}");
+                $"resumedProfile={_logResumedProfileMeasurements}");
         }
 
         private TelemetrySnapshot MergeTelemetry(TelemetrySnapshot telemetry, DateTime nowUtc)

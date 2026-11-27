@@ -127,13 +127,11 @@ namespace SurfaceProFanControl.Infrastructure
         internal static string ExpectedCommand =>
             "\"" + ExpectedApplicationPath + "\" --startup";
 
-        private static string ExpectedApplicationPath => DistributionProfile.IsPortable
+        private static string ExpectedApplicationPath => DistributionProfile.IsPortable || DistributionProfile.IsVersionAlongsideInstall
             ? DistributionProfile.ApplicationPath
             : FanGuardServiceManager.InstalledApplicationPath;
 
-        private static string ExpectedWorkingDirectory => DistributionProfile.IsPortable
-            ? DistributionProfile.WorkingDirectory
-            : FanGuardServiceManager.ApplicationInstallDirectory;
+        private static string ExpectedWorkingDirectory => Path.GetDirectoryName(ExpectedApplicationPath)!;
 
         private static string ExpectedRunLevel => DistributionProfile.IsPortable
             ? "LeastPrivilege"

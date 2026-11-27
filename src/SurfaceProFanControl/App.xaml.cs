@@ -39,7 +39,7 @@ namespace SurfaceProFanControl
                 RunStartupRegistrationCommand(e.Args[0]);
                 return;
             }
-            var useRunningService = !DistributionProfile.IsPortable && IsVersionAlongsideInstall();
+            var useRunningService = DistributionProfile.IsVersionAlongsideInstall;
             var resumeProfile = useRunningService && e.Args.Length == 1 &&
                                 string.Equals(e.Args[0], "--resume-profile", StringComparison.OrdinalIgnoreCase);
             if (e.Args.Length > 0 && !startupLaunch && !resumeProfile)
@@ -106,8 +106,12 @@ namespace SurfaceProFanControl
                 }
 
                 var window = new MainWindow(device, hardwareSupport, startupLaunch, existingGuard);
-                if (existingGuard != null) window.StatusTab.IsSelected = true;
-                if (resumeProfile) window.ResumeSavedProfile();
+                if (existingGuard != null)
+                {
+                    window.StatusTab.IsSelected = true;
+                    if (startupLaunch || resumeProfile)
+                        window.ResumeSavedProfile(logMeasurements: resumeProfile);
+                }
                 MainWindow = window;
                 window.Show();
             }
@@ -121,15 +125,6 @@ namespace SurfaceProFanControl
                     MessageBoxImage.Error);
                 Shutdown(1);
             }
-        }
-
-        // A version staged beside the installed UI uses the running service without reconfiguring it.
-        private static bool IsVersionAlongsideInstall()
-        {
-            var version = typeof(App).Assembly.GetName().Version.ToString(3);
-            var directory = Path.Combine(FanGuardServiceManager.ApplicationInstallDirectory, "Versions", version);
-            var actual = Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory).TrimEnd(Path.DirectorySeparatorChar);
-            return string.Equals(directory, actual, StringComparison.OrdinalIgnoreCase);
         }
 
         private void RunHeadless(string[] args)

@@ -32,5 +32,11 @@ namespace SurfaceProFanControl.Infrastructure
 
         public static string WorkingDirectory =>
             Path.GetDirectoryName(ApplicationPath) ?? AppDomain.CurrentDomain.BaseDirectory;
+
+        internal static bool IsVersionAlongsideInstall =>
+            !IsPortable && string.Equals(ApplicationPath, Path.Combine(
+                FanGuardServiceManager.ApplicationInstallDirectory, "Versions",
+                typeof(DistributionProfile).Assembly.GetName().Version.ToString(3), "SurfaceProFanControl.exe"),
+                StringComparison.OrdinalIgnoreCase);
     }
 }
