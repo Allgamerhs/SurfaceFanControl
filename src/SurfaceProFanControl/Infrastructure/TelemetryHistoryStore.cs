@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace SurfaceProFanControl.Infrastructure
 {
@@ -11,7 +13,11 @@ namespace SurfaceProFanControl.Infrastructure
         private const long MaximumBytes = 512 * 1024;
         private const int RetainedLines = 2000;
         private static readonly object Gate = new object();
-        private DateTime _lastWriteUtc = DateTime.MinValue;
+        private const string Header = "timestamp,temp_c,critical_c,cpu_percent,ac_power,battery_percent,mode";
+        private static readonly Encoding CsvEncoding = new UTF8Encoding(false);
+        private static Task _pendingWrite = Task.CompletedTask;
+        private static long? _lastAttempt;
+        private static bool _reportedFailure;
 
         public static string CsvPath { get; } = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -21,30 +27,42 @@ namespace SurfaceProFanControl.Infrastructure
         public void Append(TelemetrySnapshot telemetry, string mode)
         {
             if (telemetry == null) throw new ArgumentNullException(nameof(telemetry));
-            if (DateTime.UtcNow - _lastWriteUtc < TimeSpan.FromSeconds(10)) return;
-
             lock (Gate)
             {
-                if (DateTime.UtcNow - _lastWriteUtc < TimeSpan.FromSeconds(10)) return;
+                var now = Stopwatch.GetTimestamp();
+                if (!_pendingWrite.IsCompleted || now - _lastAttempt < 10 * Stopwatch.Frequency) return;
+                _lastAttempt = now;
+                _pendingWrite = Task.Run(() => Write(telemetry, mode));
+            }
+        }
+
+        private static void Write(TelemetrySnapshot telemetry, string mode)
+        {
+            try
+            {
                 var directory = Path.GetDirectoryName(CsvPath);
                 if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-                if (!File.Exists(CsvPath))
-                {
-                    File.WriteAllText(CsvPath,
-                        "timestamp,temp_c,critical_c,cpu_percent,ac_power,battery_percent,mode\r\n",
-                        new UTF8Encoding(false));
-                }
                 var line = string.Join(",",
                     telemetry.Timestamp.ToString("O", CultureInfo.InvariantCulture),
                     Number(telemetry.TemperatureCelsius),
                     Number(telemetry.FirmwareCriticalCelsius),
                     Integer(telemetry.CpuLoadPercent),
-                    telemetry.OnAcPower ? "1" : "0",
+                    telemetry.OnAcPower.HasValue ? (telemetry.OnAcPower.Value ? "1" : "0") : string.Empty,
                     Integer(telemetry.BatteryPercent),
                     SanitizeMode(mode));
-                File.AppendAllText(CsvPath, line + "\r\n", new UTF8Encoding(false));
-                _lastWriteUtc = DateTime.UtcNow;
+                using (var stream = new FileStream(CsvPath, FileMode.Append, FileAccess.Write, FileShare.Read))
+                using (var writer = new StreamWriter(stream, CsvEncoding))
+                {
+                    if (stream.Length == 0) writer.WriteLine(Header);
+                    writer.WriteLine(line);
+                }
                 TrimIfNeeded();
+                _reportedFailure = false;
+            }
+            catch (Exception ex)
+            {
+                if (!_reportedFailure) AppLogger.Error("Telemetri geçmişi yazılamadı.", ex);
+                _reportedFailure = true;
             }
         }
 
@@ -52,10 +70,33 @@ namespace SurfaceProFanControl.Infrastructure
         {
             var info = new FileInfo(CsvPath);
             if (info.Length <= MaximumBytes) return;
-            var lines = File.ReadAllLines(CsvPath, Encoding.UTF8);
-            var retained = lines.Skip(Math.Max(1, lines.Length - RetainedLines)).ToArray();
-            var output = new[] { lines[0] }.Concat(retained);
-            File.WriteAllLines(CsvPath, output, new UTF8Encoding(false));
+            var retained = new Queue<string>(RetainedLines);
+            string header;
+            using (var reader = new StreamReader(CsvPath, CsvEncoding))
+            {
+                header = reader.ReadLine() ?? Header;
+                string? line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    if (retained.Count == RetainedLines) retained.Dequeue();
+                    retained.Enqueue(line);
+                }
+            }
+
+            var temporaryPath = CsvPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                using (var writer = new StreamWriter(temporaryPath, false, CsvEncoding))
+                {
+                    writer.WriteLine(header);
+                    foreach (var line in retained) writer.WriteLine(line);
+                }
+                File.Replace(temporaryPath, CsvPath, null);
+            }
+            finally
+            {
+                File.Delete(temporaryPath);
+            }
         }
 
         private static string Number(double? value) =>

@@ -40,12 +40,13 @@ namespace SurfaceProFanControl.Core
             new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.OrdinalIgnoreCase)
             {
                 ["tr"] = D(
+                    "LastRpmMeasurement", "Son devir ölçümü: {0}", "RpmDataStale", "Güncel devir verisi yok",
                     "AppTitle", "Fan Kontrol Merkezi", "Header", "FAN KONTROL MERKEZİ",
                     "TabControl", "Kontrol", "TabProfiles", "Profiller", "TabStatus", "Durum", "TabSettings", "Ayarlar",
                     "Temperature", "Sıcaklık", "Critical", "kritik", "FanCommand", "Fan komutu", "CpuPower", "CPU / Güç",
                     "Profile", "Profil", "Aggressiveness", "Soğutma agresifliği", "PolicyAuto", "Firmware otomatik fan yönetimi.",
                     "PolicyMax", "Doğrulanmış sürekli maksimum fan.", "PolicyCurve", "MAX {0:0.0} °C / AUTO {1:0.0} °C; 5 °C histerezis, 60 sn bekleme.",
-                    "VerifiedPeakRpm", "Doğrulanmış tepe RPM", "BoostReady", "Boost hazır", "TimedBoost", "Süreli MAX",
+                    "VerifiedPeakRpm", "Oturum tepe devri", "BoostReady", "Boost hazır", "TimedBoost", "Süreli MAX",
                     "ConstantMaximum", "SABİT MAX", "Automatic", "OTOMATİK", "PowerProfiles", "Prize ve bataryaya göre ayrı profil",
                     "AcPolicy", "Prizde", "BatteryPolicy", "Bataryada", "ImportProfile", "İçe aktar", "ExportProfile", "Dışa aktar",
                     "HardwareSupport", "Donanım desteği", "FullControl", "Tam kontrol", "MonitoringOnly", "Yalnız izleme",
@@ -68,10 +69,11 @@ namespace SurfaceProFanControl.Core
                     "SessionTemperatureRange", "Oturum min/maks: {0:0.0} / {1:0.0} °C", "CurveAutoMaxHint", "Düşükte firmware AUTO (sessiz), yüksekte iki fan MAX."),
 
                 ["en"] = D(
+                    "LastRpmMeasurement", "Last RPM reading: {0}", "RpmDataStale", "No current RPM data",
                     "AppTitle", "Fan Control Center", "Header", "FAN CONTROL CENTER", "TabControl", "Control", "TabProfiles", "Profiles", "TabStatus", "Status", "TabSettings", "Settings",
                     "Temperature", "Temperature", "Critical", "critical", "FanCommand", "Fan command", "CpuPower", "CPU / Power", "Profile", "Profile",
                     "Aggressiveness", "Cooling aggressiveness", "PolicyAuto", "Firmware automatic fan management.", "PolicyMax", "Verified continuous maximum fan.",
-                    "PolicyCurve", "MAX {0:0.0} °C / AUTO {1:0.0} °C; 5 °C hysteresis, 60 s dwell.", "VerifiedPeakRpm", "Verified peak RPM",
+                    "PolicyCurve", "MAX {0:0.0} °C / AUTO {1:0.0} °C; 5 °C hysteresis, 60 s dwell.", "VerifiedPeakRpm", "Session peak RPM",
                     "BoostReady", "Boost ready", "TimedBoost", "Timed MAX", "ConstantMaximum", "CONSTANT MAX", "Automatic", "AUTOMATIC",
                     "PowerProfiles", "Separate AC and battery profiles", "AcPolicy", "On AC", "BatteryPolicy", "On battery", "ImportProfile", "Import", "ExportProfile", "Export",
                     "HardwareSupport", "Hardware support", "FullControl", "Full control", "MonitoringOnly", "Monitoring only", "Fan1", "Fan 1", "Fan2", "Fan 2",
@@ -92,10 +94,11 @@ namespace SurfaceProFanControl.Core
                     "CurveAutoMaxHint", "Firmware AUTO (quiet) below; both fans MAX above."),
 
                 ["de"] = D(
+                    "LastRpmMeasurement", "Letzte Drehzahlmessung: {0}", "RpmDataStale", "Keine aktuellen Drehzahldaten",
                     "AppTitle", "Lüftersteuerung", "Header", "LÜFTERSTEUERUNG", "TabControl", "Steuerung", "TabProfiles", "Profile", "TabStatus", "Status", "TabSettings", "Einstellungen",
                     "Temperature", "Temperatur", "Critical", "kritisch", "FanCommand", "Lüfterbefehl", "CpuPower", "CPU / Strom", "Profile", "Profil",
                     "Aggressiveness", "Kühl-Aggressivität", "PolicyAuto", "Automatische Firmware-Lüftersteuerung.", "PolicyMax", "Geprüfter dauerhafter Maximalbetrieb.",
-                    "PolicyCurve", "MAX {0:0.0} °C / AUTO {1:0.0} °C; 5 °C Hysterese, 60 s Wartezeit.", "VerifiedPeakRpm", "Geprüfte Spitzen-RPM",
+                    "PolicyCurve", "MAX {0:0.0} °C / AUTO {1:0.0} °C; 5 °C Hysterese, 60 s Wartezeit.", "VerifiedPeakRpm", "Spitzen-RPM der Sitzung",
                     "BoostReady", "Boost bereit", "TimedBoost", "MAX mit Zeit", "ConstantMaximum", "DAUER-MAX", "Automatic", "AUTOMATIK",
                     "PowerProfiles", "Getrennte Netz-/Akkuprofile", "AcPolicy", "Netzbetrieb", "BatteryPolicy", "Akkubetrieb", "ImportProfile", "Importieren", "ExportProfile", "Exportieren",
                     "HardwareSupport", "Hardwareunterstützung", "FullControl", "Volle Steuerung", "MonitoringOnly", "Nur Überwachung", "Fan1", "Lüfter 1", "Fan2", "Lüfter 2",
@@ -116,10 +119,11 @@ namespace SurfaceProFanControl.Core
                     "CurveAutoMaxHint", "Unten Firmware AUTO (leise), oben beide Lüfter MAX."),
 
                 ["it"] = D(
+                    "LastRpmMeasurement", "Ultima misura RPM: {0}", "RpmDataStale", "Nessun dato RPM aggiornato",
                     "AppTitle", "Controllo ventole", "Header", "CONTROLLO VENTOLE", "TabControl", "Controllo", "TabProfiles", "Profili", "TabStatus", "Stato", "TabSettings", "Impostazioni",
                     "Temperature", "Temperatura", "Critical", "critica", "FanCommand", "Comando ventole", "CpuPower", "CPU / Alimentazione", "Profile", "Profilo",
                     "Aggressiveness", "Intensità raffreddamento", "PolicyAuto", "Gestione automatica del firmware.", "PolicyMax", "Massimo continuo verificato.",
-                    "PolicyCurve", "MAX {0:0.0} °C / AUTO {1:0.0} °C; isteresi 5 °C, attesa 60 s.", "VerifiedPeakRpm", "RPM di picco verificati",
+                    "PolicyCurve", "MAX {0:0.0} °C / AUTO {1:0.0} °C; isteresi 5 °C, attesa 60 s.", "VerifiedPeakRpm", "RPM di picco della sessione",
                     "BoostReady", "Boost pronto", "TimedBoost", "MAX temporaneo", "ConstantMaximum", "MAX CONTINUO", "Automatic", "AUTOMATICO",
                     "PowerProfiles", "Profili separati rete/batteria", "AcPolicy", "Con alimentazione", "BatteryPolicy", "A batteria", "ImportProfile", "Importa", "ExportProfile", "Esporta",
                     "HardwareSupport", "Supporto hardware", "FullControl", "Controllo completo", "MonitoringOnly", "Solo monitoraggio", "Fan1", "Ventola 1", "Fan2", "Ventola 2",
@@ -140,10 +144,11 @@ namespace SurfaceProFanControl.Core
                     "CurveAutoMaxHint", "Firmware AUTO (silenzioso) sotto; entrambe le ventole MAX sopra."),
 
                 ["es"] = D(
+                    "LastRpmMeasurement", "Última lectura de RPM: {0}", "RpmDataStale", "Sin datos actuales de RPM",
                     "AppTitle", "Control de ventiladores", "Header", "CONTROL DE VENTILADORES", "TabControl", "Control", "TabProfiles", "Perfiles", "TabStatus", "Estado", "TabSettings", "Ajustes",
                     "Temperature", "Temperatura", "Critical", "crítica", "FanCommand", "Orden del ventilador", "CpuPower", "CPU / Energía", "Profile", "Perfil",
                     "Aggressiveness", "Intensidad de refrigeración", "PolicyAuto", "Gestión automática del firmware.", "PolicyMax", "Máximo continuo verificado.",
-                    "PolicyCurve", "MAX {0:0.0} °C / AUTO {1:0.0} °C; histéresis 5 °C, espera 60 s.", "VerifiedPeakRpm", "RPM máximas verificadas",
+                    "PolicyCurve", "MAX {0:0.0} °C / AUTO {1:0.0} °C; histéresis 5 °C, espera 60 s.", "VerifiedPeakRpm", "RPM máximas de la sesión",
                     "BoostReady", "Boost preparado", "TimedBoost", "MAX temporal", "ConstantMaximum", "MAX CONSTANTE", "Automatic", "AUTOMÁTICO",
                     "PowerProfiles", "Perfiles separados para red/batería", "AcPolicy", "Con corriente", "BatteryPolicy", "Con batería", "ImportProfile", "Importar", "ExportProfile", "Exportar",
                     "HardwareSupport", "Compatibilidad de hardware", "FullControl", "Control completo", "MonitoringOnly", "Solo supervisión", "Fan1", "Ventilador 1", "Fan2", "Ventilador 2",
@@ -164,10 +169,11 @@ namespace SurfaceProFanControl.Core
                     "CurveAutoMaxHint", "Firmware AUTO (silencioso) abajo; ambos ventiladores MAX arriba."),
 
                 ["ar"] = D(
+                    "LastRpmMeasurement", "آخر قياس لسرعة الدوران: {0}", "RpmDataStale", "لا توجد بيانات حديثة لسرعة الدوران",
                     "AppTitle", "مركز التحكم بالمراوح", "Header", "التحكم بالمراوح", "TabControl", "التحكم", "TabProfiles", "الملفات", "TabStatus", "الحالة", "TabSettings", "الإعدادات",
                     "Temperature", "درجة الحرارة", "Critical", "حرجة", "FanCommand", "أمر المروحة", "CpuPower", "المعالج / الطاقة", "Profile", "الملف",
                     "Aggressiveness", "شدة التبريد", "PolicyAuto", "إدارة تلقائية بالبرنامج الثابت.", "PolicyMax", "أقصى سرعة مستمرة ومتحقق منها.",
-                    "PolicyCurve", "MAX {0:0.0} °C / AUTO {1:0.0} °C؛ فارق 5 °C وانتظار 60 ث.", "VerifiedPeakRpm", "ذروة RPM المتحقق منها",
+                    "PolicyCurve", "MAX {0:0.0} °C / AUTO {1:0.0} °C؛ فارق 5 °C وانتظار 60 ث.", "VerifiedPeakRpm", "أعلى RPM في الجلسة",
                     "BoostReady", "التعزيز جاهز", "TimedBoost", "MAX مؤقت", "ConstantMaximum", "MAX مستمر", "Automatic", "تلقائي",
                     "PowerProfiles", "ملفات منفصلة للطاقة والبطارية", "AcPolicy", "مع الطاقة", "BatteryPolicy", "على البطارية", "ImportProfile", "استيراد", "ExportProfile", "تصدير",
                     "HardwareSupport", "دعم الأجهزة", "FullControl", "تحكم كامل", "MonitoringOnly", "مراقبة فقط", "Fan1", "المروحة 1", "Fan2", "المروحة 2",
@@ -188,10 +194,11 @@ namespace SurfaceProFanControl.Core
                     "CurveAutoMaxHint", "Firmware AUTO هادئ في الأسفل، والمروحتان MAX في الأعلى."),
 
                 ["zh-Hans"] = D(
+                    "LastRpmMeasurement", "上次转速测量：{0}", "RpmDataStale", "暂无最新转速数据",
                     "AppTitle", "风扇控制中心", "Header", "风扇控制中心", "TabControl", "控制", "TabProfiles", "配置", "TabStatus", "状态", "TabSettings", "设置",
                     "Temperature", "温度", "Critical", "临界", "FanCommand", "风扇命令", "CpuPower", "CPU / 电源", "Profile", "配置",
                     "Aggressiveness", "冷却强度", "PolicyAuto", "固件自动风扇管理。", "PolicyMax", "已验证的持续最高风速。",
-                    "PolicyCurve", "MAX {0:0.0} °C / AUTO {1:0.0} °C；5 °C 滞后，等待 60 秒。", "VerifiedPeakRpm", "已验证峰值 RPM",
+                    "PolicyCurve", "MAX {0:0.0} °C / AUTO {1:0.0} °C；5 °C 滞后，等待 60 秒。", "VerifiedPeakRpm", "本次会话峰值 RPM",
                     "BoostReady", "加速已就绪", "TimedBoost", "定时 MAX", "ConstantMaximum", "持续 MAX", "Automatic", "自动",
                     "PowerProfiles", "电源/电池独立配置", "AcPolicy", "接通电源", "BatteryPolicy", "使用电池", "ImportProfile", "导入", "ExportProfile", "导出",
                     "HardwareSupport", "硬件支持", "FullControl", "完全控制", "MonitoringOnly", "仅监控", "Fan1", "风扇 1", "Fan2", "风扇 2",
@@ -212,10 +219,11 @@ namespace SurfaceProFanControl.Core
                     "CurveAutoMaxHint", "低温使用固件 AUTO（安静），高温两个风扇 MAX。"),
 
                 ["ja"] = D(
+                    "LastRpmMeasurement", "最終回転数測定：{0}", "RpmDataStale", "最新の回転数データなし",
                     "AppTitle", "ファン制御センター", "Header", "ファン制御センター", "TabControl", "制御", "TabProfiles", "プロファイル", "TabStatus", "状態", "TabSettings", "設定",
                     "Temperature", "温度", "Critical", "危険", "FanCommand", "ファン命令", "CpuPower", "CPU / 電源", "Profile", "プロファイル",
                     "Aggressiveness", "冷却強度", "PolicyAuto", "ファームウェアの自動制御。", "PolicyMax", "検証済みの連続最大ファン。",
-                    "PolicyCurve", "MAX {0:0.0} °C / AUTO {1:0.0} °C；5 °C ヒステリシス、60 秒待機。", "VerifiedPeakRpm", "検証済みピーク RPM",
+                    "PolicyCurve", "MAX {0:0.0} °C / AUTO {1:0.0} °C；5 °C ヒステリシス、60 秒待機。", "VerifiedPeakRpm", "セッション最高 RPM",
                     "BoostReady", "ブースト準備完了", "TimedBoost", "時間制 MAX", "ConstantMaximum", "連続 MAX", "Automatic", "自動",
                     "PowerProfiles", "AC/バッテリー別プロファイル", "AcPolicy", "AC 電源", "BatteryPolicy", "バッテリー", "ImportProfile", "読み込み", "ExportProfile", "書き出し",
                     "HardwareSupport", "ハードウェア対応", "FullControl", "完全制御", "MonitoringOnly", "監視のみ", "Fan1", "ファン 1", "Fan2", "ファン 2",
@@ -236,10 +244,11 @@ namespace SurfaceProFanControl.Core
                     "CurveAutoMaxHint", "低温では Firmware AUTO（静音）、高温では両ファン MAX。"),
 
                 ["ru"] = D(
+                    "LastRpmMeasurement", "Последний замер оборотов: {0}", "RpmDataStale", "Нет свежих данных об оборотах",
                     "AppTitle", "Центр управления вентиляторами", "Header", "УПРАВЛЕНИЕ ВЕНТИЛЯТОРАМИ", "TabControl", "Управление", "TabProfiles", "Профили", "TabStatus", "Статус", "TabSettings", "Настройки",
                     "Temperature", "Температура", "Critical", "критич.", "FanCommand", "Команда", "CpuPower", "CPU / Питание", "Profile", "Профиль",
                     "Aggressiveness", "Интенсивность охлаждения", "PolicyAuto", "Автоматика прошивки.", "PolicyMax", "Проверенный постоянный максимум.",
-                    "PolicyCurve", "MAX {0:0.0} °C / AUTO {1:0.0} °C; гистерезис 5 °C, пауза 60 с.", "VerifiedPeakRpm", "Проверенные пиковые RPM",
+                    "PolicyCurve", "MAX {0:0.0} °C / AUTO {1:0.0} °C; гистерезис 5 °C, пауза 60 с.", "VerifiedPeakRpm", "Пиковые RPM за сеанс",
                     "BoostReady", "Ускорение готово", "TimedBoost", "MAX по таймеру", "ConstantMaximum", "ПОСТОЯННЫЙ MAX", "Automatic", "АВТО",
                     "PowerProfiles", "Разные профили для сети/батареи", "AcPolicy", "От сети", "BatteryPolicy", "От батареи", "ImportProfile", "Импорт", "ExportProfile", "Экспорт",
                     "HardwareSupport", "Поддержка оборудования", "FullControl", "Полное управление", "MonitoringOnly", "Только мониторинг", "Fan1", "Вентилятор 1", "Fan2", "Вентилятор 2",
@@ -260,10 +269,11 @@ namespace SurfaceProFanControl.Core
                     "CurveAutoMaxHint", "Внизу Firmware AUTO (тихо), вверху оба вентилятора MAX."),
 
                 ["pl"] = D(
+                    "LastRpmMeasurement", "Ostatni pomiar obrotów: {0}", "RpmDataStale", "Brak aktualnych danych o obrotach",
                     "AppTitle", "Centrum sterowania wentylatorami", "Header", "STEROWANIE WENTYLATORAMI", "TabControl", "Sterowanie", "TabProfiles", "Profile", "TabStatus", "Stan", "TabSettings", "Ustawienia",
                     "Temperature", "Temperatura", "Critical", "krytyczna", "FanCommand", "Polecenie wentylatora", "CpuPower", "CPU / Zasilanie", "Profile", "Profil",
                     "Aggressiveness", "Intensywność chłodzenia", "PolicyAuto", "Automatyczne sterowanie firmware.", "PolicyMax", "Zweryfikowana stała prędkość maksymalna.",
-                    "PolicyCurve", "MAX {0:0.0} °C / AUTO {1:0.0} °C; histereza 5 °C, oczekiwanie 60 s.", "VerifiedPeakRpm", "Zweryfikowane szczytowe RPM",
+                    "PolicyCurve", "MAX {0:0.0} °C / AUTO {1:0.0} °C; histereza 5 °C, oczekiwanie 60 s.", "VerifiedPeakRpm", "Szczytowe RPM sesji",
                     "BoostReady", "Boost gotowy", "TimedBoost", "MAX czasowy", "ConstantMaximum", "STAŁY MAX", "Automatic", "AUTOMATYCZNY",
                     "PowerProfiles", "Osobne profile sieci/baterii", "AcPolicy", "Zasilanie sieciowe", "BatteryPolicy", "Na baterii", "ImportProfile", "Importuj", "ExportProfile", "Eksportuj",
                     "HardwareSupport", "Obsługa sprzętu", "FullControl", "Pełne sterowanie", "MonitoringOnly", "Tylko monitoring", "Fan1", "Wentylator 1", "Fan2", "Wentylator 2",

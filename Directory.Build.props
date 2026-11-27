@@ -1,7 +1,17 @@
 <Project>
   <PropertyGroup>
-    <Version>1.8.0</Version>
-    <AssemblyVersion>1.8.0.0</AssemblyVersion>
-    <FileVersion>1.8.0.0</FileVersion>
+    <Version>1.9.0</Version>
+    <AssemblyVersion>1.9.0.0</AssemblyVersion>
+    <FileVersion>1.9.0.0</FileVersion>
   </PropertyGroup>
+  <Choose>
+    <When Condition="'$(Configuration)' == 'Release'">
+      <PropertyGroup>
+        <Deterministic>true</Deterministic>
+        <PathMap>$(MSBuildThisFileDirectory)=/_/</PathMap>
+        <DebugType>none</DebugType>
+        <DebugSymbols>false</DebugSymbols>
+      </PropertyGroup>
+    </When>
+  </Choose>
 </Project>

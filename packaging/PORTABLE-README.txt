@@ -7,4 +7,5 @@ SURFACE FAN CONTROL - PORTABLE MONITOR
 The portable package installs no kernel driver or LocalSystem service. It performs no
 hardware fan writes and is intended for monitoring, profile editing, and interface testing.
 
-Use the SHA-256 value and VirusTotal report published with the GitHub release to verify the file.
+Before running the app, compare the SHA-256 of the downloaded ZIP with its entry in the
+SHA256SUMS.txt file attached to the same GitHub release.

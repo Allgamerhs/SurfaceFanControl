@@ -4,6 +4,9 @@ namespace SurfaceProFanControl.Core
 {
     public sealed class HardwareIdentity
     {
+        public HardwareIdentity(string manufacturer, string model, string biosVersion)
+            : this(manufacturer, model, string.Empty, biosVersion, string.Empty) { }
+
         public HardwareIdentity(string manufacturer, string model, string uuid, string biosVersion, string serialNumber)
         {
             Manufacturer = manufacturer ?? string.Empty;

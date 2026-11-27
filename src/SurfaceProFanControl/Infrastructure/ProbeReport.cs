@@ -11,12 +11,9 @@ namespace SurfaceProFanControl.Infrastructure
             var supported = device.Identity.MatchesSurfacePro1Target(out var reason);
             var builder = new StringBuilder();
             builder.AppendLine("{");
-            Append(builder, "computerName", device.ComputerName, true);
             Append(builder, "manufacturer", device.Identity.Manufacturer, true);
             Append(builder, "model", device.Identity.Model, true);
-            Append(builder, "uuid", device.Identity.Uuid, true);
             Append(builder, "biosVersion", device.Identity.BiosVersion, true);
-            Append(builder, "serialNumber", device.Identity.SerialNumber, true);
             Append(builder, "processor", device.Processor, true);
             Append(builder, "operatingSystem", device.OperatingSystem, true);
             builder.AppendLine($"  \"targetMatched\": {supported.ToString().ToLowerInvariant()},");
@@ -24,7 +21,7 @@ namespace SurfaceProFanControl.Infrastructure
             AppendNumber(builder, "temperatureCelsius", telemetry.TemperatureCelsius, true);
             AppendNumber(builder, "firmwareCriticalCelsius", telemetry.FirmwareCriticalCelsius, true);
             builder.AppendLine($"  \"cpuLoadPercent\": {(telemetry.CpuLoadPercent.HasValue ? telemetry.CpuLoadPercent.Value.ToString(CultureInfo.InvariantCulture) : "null")},");
-            builder.AppendLine($"  \"onAcPower\": {telemetry.OnAcPower.ToString().ToLowerInvariant()},");
+            builder.AppendLine($"  \"onAcPower\": {telemetry.OnAcPower?.ToString().ToLowerInvariant() ?? "null"},");
             builder.AppendLine($"  \"batteryPercent\": {(telemetry.BatteryPercent.HasValue ? telemetry.BatteryPercent.Value.ToString(CultureInfo.InvariantCulture) : "null")}");
             builder.AppendLine("}");
             return builder.ToString();

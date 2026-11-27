@@ -16,6 +16,7 @@ namespace SurfaceProFanControl.Shared
         private const uint ServiceQueryConfig = 0x0001;
         private const uint ServiceQueryStatus = 0x0004;
         private const int ScStatusProcessInfo = 0;
+        private const uint ServiceKernelDriver = 0x00000001;
         private const uint ServiceWin32OwnProcess = 0x00000010;
         private const uint ServiceRunning = 0x00000004;
         private const uint ProcessQueryLimitedInformation = 0x1000;
@@ -127,6 +128,41 @@ namespace SurfaceProFanControl.Shared
 
         private static void RequireExpectedService(uint expectedProcessId, string expectedPath)
         {
+            var config = ReadServiceConfiguration(GuardServiceName, out var status);
+            if (status.ServiceType != ServiceWin32OwnProcess ||
+                status.CurrentState != ServiceRunning ||
+                status.ProcessId == 0 ||
+                status.ProcessId != expectedProcessId)
+            {
+                throw new InvalidDataException(
+                    "The pipe server does not match the running fan guard service.");
+            }
+
+            var expectedCommand = "\"" + expectedPath + "\" --service";
+            var actualCommand = Environment.ExpandEnvironmentVariables(config.BinaryPathName).Trim();
+            if (config.ServiceType != ServiceWin32OwnProcess ||
+                !string.Equals(actualCommand, expectedCommand, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(config.ServiceStartName, "LocalSystem", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException("The fan guard service configuration is not trusted.");
+            }
+        }
+
+        public static string ReadRunningKernelDriverPath(string serviceName)
+        {
+            var config = ReadServiceConfiguration(serviceName, out var status);
+            if (status.CurrentState != ServiceRunning ||
+                status.ServiceType != ServiceKernelDriver ||
+                config.ServiceType != ServiceKernelDriver)
+            {
+                throw new InvalidDataException("The configured driver is not a running kernel driver.");
+            }
+            return config.BinaryPathName;
+        }
+
+        private static ServiceConfiguration ReadServiceConfiguration(
+            string serviceName, out ServiceStatusProcess status)
+        {
             var manager = OpenSCManager(null, null, ScManagerConnect);
             if (manager == IntPtr.Zero)
             {
@@ -137,36 +173,17 @@ namespace SurfaceProFanControl.Shared
             {
                 var service = OpenService(
                     manager,
-                    GuardServiceName,
+                    serviceName,
                     ServiceQueryConfig | ServiceQueryStatus);
                 if (service == IntPtr.Zero)
                 {
-                    throw NewWin32Exception("The fan guard service could not be opened.");
+                    throw NewWin32Exception("The service could not be opened for status and configuration queries.");
                 }
 
                 try
                 {
-                    var status = QueryStatus(service);
-                    if (status.ServiceType != ServiceWin32OwnProcess ||
-                        status.CurrentState != ServiceRunning ||
-                        status.ProcessId == 0 ||
-                        status.ProcessId != expectedProcessId)
-                    {
-                        throw new InvalidDataException(
-                            "The pipe server does not match the running fan guard service.");
-                    }
-
-                    var config = QueryConfig(service);
-                    var expectedCommand = "\"" + expectedPath + "\" --service";
-                    var actualCommand = Environment.ExpandEnvironmentVariables(
-                        config.BinaryPathName).Trim();
-                    var account = config.ServiceStartName;
-                    if (config.ServiceType != ServiceWin32OwnProcess ||
-                        !string.Equals(actualCommand, expectedCommand, StringComparison.OrdinalIgnoreCase) ||
-                        !string.Equals(account, "LocalSystem", StringComparison.OrdinalIgnoreCase))
-                    {
-                        throw new InvalidDataException("The fan guard service configuration is not trusted.");
-                    }
+                    status = QueryStatus(service);
+                    return QueryConfig(service);
                 }
                 finally
                 {

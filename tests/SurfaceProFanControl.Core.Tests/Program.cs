@@ -58,6 +58,8 @@ namespace SurfaceProFanControl.Core.Tests
             Run("Temperature signal median rejects one spike", TemperatureSignalMedianRejectsSpike);
             Run("Temperature signal reports trend and range", TemperatureSignalReportsTrendAndRange);
             Run("Temperature signal becomes stale", TemperatureSignalBecomesStale);
+            Run("First temperature after a gap controls cooling immediately", TemperatureRecoversAfterGap);
+            Run("Future temperature is unavailable after a clock correction", FutureTemperatureIsStale);
             Run("Binary curve uses separate on and off thresholds", BinaryCurveUsesHysteresis);
             Run("Binary curve enforces configured dwell", BinaryCurveEnforcesDwell);
             Run("Binary curve predictive cooling enters early", BinaryCurvePredictsFastRise);
@@ -503,9 +505,36 @@ namespace SurfaceProFanControl.Core.Tests
             var tracker = new TemperatureSignalTracker();
             var start = new DateTime(2026, 8, 29, 12, 0, 0, DateTimeKind.Utc);
             tracker.Add(65, start);
-            var signal = tracker.Read(start.AddSeconds(31), TimeSpan.FromSeconds(30));
+            var signal = tracker.Read(start.AddSeconds(30), TimeSpan.FromSeconds(30));
             True(signal.IsStale && !signal.ControlTemperatureCelsius.HasValue);
             Equal(65, signal.TemperatureCelsius, 0.01);
+        }
+
+        private static void TemperatureRecoversAfterGap()
+        {
+            var tracker = new TemperatureSignalTracker();
+            var start = new DateTime(2026, 8, 29, 12, 0, 0, DateTimeKind.Utc);
+            tracker.Add(40, start);
+            tracker.Add(41, start.AddSeconds(5));
+            tracker.Add(85, start.AddMinutes(1));
+            var recovered = tracker.Read(start.AddMinutes(1), TimeSpan.FromSeconds(20));
+            Equal(85, recovered.ControlTemperatureCelsius, 0.01);
+            Equal(0, recovered.TrendCelsiusPerMinute, 0.01);
+            True(recovered.SampleCount == 1);
+            Equal(40, recovered.MinimumCelsius, 0.01);
+            Equal(85, recovered.MaximumCelsius, 0.01);
+        }
+
+        private static void FutureTemperatureIsStale()
+        {
+            var tracker = new TemperatureSignalTracker();
+            var now = new DateTime(2026, 8, 29, 12, 0, 0, DateTimeKind.Utc);
+            tracker.Add(40, now.AddMinutes(1));
+            True(!tracker.Read(now, TimeSpan.FromSeconds(20)).ControlTemperatureCelsius.HasValue);
+            tracker.Add(75, now);
+            var current = tracker.Read(now, TimeSpan.FromSeconds(20));
+            Equal(75, current.ControlTemperatureCelsius, 0.01);
+            True(current.SampleCount == 1);
         }
 
         private static void BinaryCurveUsesHysteresis()

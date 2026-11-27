@@ -14,6 +14,7 @@ namespace SurfaceProFanControl
         private const string MutexName = @"Global\SurfaceProFanControl.Application";
         private Mutex? _instanceMutex;
         private bool _ownsMutex;
+        private WindowActivation? _activation;
 
         protected override void OnStartup(StartupEventArgs e)
         {
@@ -39,7 +40,10 @@ namespace SurfaceProFanControl
                 RunStartupRegistrationCommand(e.Args[0]);
                 return;
             }
-            if (e.Args.Length > 0 && !startupLaunch)
+            var useRunningService = DistributionProfile.IsVersionAlongsideInstall;
+            var resumeProfile = useRunningService && e.Args.Length == 1 &&
+                                string.Equals(e.Args[0], "--resume-profile", StringComparison.OrdinalIgnoreCase);
+            if (e.Args.Length > 0 && !startupLaunch && !resumeProfile)
             {
                 MessageBox.Show(
                     "Bilinmeyen başlangıç seçeneği.",
@@ -50,7 +54,7 @@ namespace SurfaceProFanControl
                 return;
             }
 
-            if (!DistributionProfile.IsPortable &&
+            if (!useRunningService && !DistributionProfile.IsPortable &&
                 !FanGuardServiceManager.IsRunningFromSecureInstall &&
                 File.Exists(FanGuardServiceManager.InstalledApplicationPath))
             {
@@ -77,12 +81,22 @@ namespace SurfaceProFanControl
             {
                 if (!TryAcquireExclusiveInstance())
                 {
-                    MessageBox.Show("Surface Pro Soğutma Kontrolü zaten çalışıyor.",
-                        "Uygulama açık", MessageBoxButton.OK, MessageBoxImage.Information);
-                    Shutdown(2);
-                    return;
+                    if (startupLaunch || resumeProfile || WindowActivation.TryShowExisting())
+                    {
+                        Shutdown(0);
+                        return;
+                    }
+                    // The previous instance may have exited while we were looking for its window.
+                    if (!TryAcquireExclusiveInstance())
+                    {
+                        MessageBox.Show("Surface Pro Soğutma Kontrolü zaten çalışıyor.",
+                            "Uygulama açık", MessageBoxButton.OK, MessageBoxImage.Information);
+                        Shutdown(2);
+                        return;
+                    }
                 }
 
+                _activation = new WindowActivation();
                 var device = new HardwareProbe().ReadDevice();
                 var hardwareSupport = DistributionProfile.IsPortable
                     ? new HardwareSupport(
@@ -90,14 +104,28 @@ namespace SurfaceProFanControl
                         "portable-windows-monitor",
                         "DeviceMonitoringOnly")
                     : HardwareSupport.Detect(device.Identity);
-                if (hardwareSupport.CanControl)
+                if (resumeProfile && !hardwareSupport.CanControl)
+                    throw new InvalidOperationException("Kayıtlı fan profili bu donanımda uygulanamıyor.");
+                FanGuardClient? existingGuard = null;
+                if (useRunningService && hardwareSupport.CanControl)
+                {
+                    existingGuard = FanGuardClient.ConnectToExistingService();
+                }
+                else if (hardwareSupport.CanControl)
                 {
                     FanGuardServiceManager.EnsureReady();
                 }
 
-                var window = new MainWindow(device, hardwareSupport, startupLaunch);
+                var window = new MainWindow(device, hardwareSupport, startupLaunch, existingGuard);
+                if (existingGuard != null)
+                {
+                    window.StatusTab.IsSelected = true;
+                    if (startupLaunch || resumeProfile)
+                        window.ResumeSavedProfile(logMeasurements: resumeProfile);
+                }
                 MainWindow = window;
                 window.Show();
+                _activation.Listen(Dispatcher, window.ShowFromTray);
             }
             catch (Exception ex)
             {
@@ -171,7 +199,7 @@ namespace SurfaceProFanControl
                 return true;
             }
 
-            _instanceMutex = new Mutex(false, MutexName);
+            _instanceMutex ??= new Mutex(false, MutexName);
             try
             {
                 _ownsMutex = _instanceMutex.WaitOne(0, false);
@@ -209,6 +237,7 @@ namespace SurfaceProFanControl
 
         protected override void OnExit(ExitEventArgs e)
         {
+            _activation?.Dispose();
             if (_ownsMutex && _instanceMutex != null)
             {
                 try

@@ -41,6 +41,7 @@ namespace SurfaceProFanControl.Infrastructure
                     .Elements(TaskNamespace + "Exec").SingleOrDefault();
 
                 return principal != null && trigger != null && action != null &&
+                       ((bool?)task.Element(TaskNamespace + "Settings")?.Element(TaskNamespace + "Enabled") ?? true) &&
                        UserIdentityMatchesCurrent(
                            (string?)principal.Element(TaskNamespace + "UserId")) &&
                        string.Equals((string?)principal.Element(TaskNamespace + "LogonType"),
@@ -58,7 +59,7 @@ namespace SurfaceProFanControl.Infrastructure
                        PathsEqual((string?)action.Element(TaskNamespace + "WorkingDirectory"),
                            ExpectedWorkingDirectory);
             }
-            catch (Exception ex) when (ex is System.Xml.XmlException ||
+            catch (Exception ex) when (ex is FormatException || ex is System.Xml.XmlException ||
                                        ex is InvalidOperationException ||
                                        ex is ArgumentException)
             {
@@ -127,13 +128,11 @@ namespace SurfaceProFanControl.Infrastructure
         internal static string ExpectedCommand =>
             "\"" + ExpectedApplicationPath + "\" --startup";
 
-        private static string ExpectedApplicationPath => DistributionProfile.IsPortable
+        private static string ExpectedApplicationPath => DistributionProfile.IsPortable || DistributionProfile.IsVersionAlongsideInstall
             ? DistributionProfile.ApplicationPath
             : FanGuardServiceManager.InstalledApplicationPath;
 
-        private static string ExpectedWorkingDirectory => DistributionProfile.IsPortable
-            ? DistributionProfile.WorkingDirectory
-            : FanGuardServiceManager.ApplicationInstallDirectory;
+        private static string ExpectedWorkingDirectory => Path.GetDirectoryName(ExpectedApplicationPath)!;
 
         private static string ExpectedRunLevel => DistributionProfile.IsPortable
             ? "LeastPrivilege"
