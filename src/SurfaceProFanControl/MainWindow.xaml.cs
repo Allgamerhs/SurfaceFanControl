@@ -45,8 +45,9 @@ namespace SurfaceProFanControl
         private readonly DateTime _profileArmUtc;
         private TelemetrySnapshot? _lastTelemetry;
         private FanGuardSnapshot? _lastRpmMeasurement;
-        private DateTime? _lastLoggedMeasurementUtc;
+        private FanGuardSnapshot? _lastLoggedMeasurement;
         private int _loggedAttachmentMeasurements;
+        private bool _resumedSavedProfile;
         private TemperatureSignal _lastTemperatureSignal = TemperatureSignal.Empty;
         private double? _lastEcCriticalCelsius;
         private DateTime _modeChangedUtc = DateTime.UtcNow;
@@ -111,6 +112,12 @@ namespace SurfaceProFanControl
         }
 
         private string T(string key) => LocalizationService.Text(key);
+
+        internal void ResumeSavedProfile()
+        {
+            _resumedSavedProfile = true;
+            _fanPolicyActive = true;
+        }
 
         private void ApplySettingsToControls()
         {
@@ -491,6 +498,7 @@ namespace SurfaceProFanControl
 
                 UpdateBoostText();
                 Present(snapshot, BuildAutomationStatus(effectivePercent, timedBoostActive), telemetry);
+                LogAttachedMeasurement();
             }
             catch (Exception ex)
             {
@@ -635,20 +643,25 @@ namespace SurfaceProFanControl
         private void LogAttachedMeasurement()
         {
             var sample = _lastRpmMeasurement;
-            if (_fanPolicyActive || _closing || _loggedAttachmentMeasurements >= 2 || sample == null ||
-                sample.Age >= EcSampleStaleAfter || sample.ReceivedAtUtc == _lastLoggedMeasurementUtc ||
-                !StatusTab.IsSelected || !LastMeasurementText.IsVisible || !MeasuredFan0Text.IsVisible ||
-                !MeasuredFan1Text.IsVisible || !MeasureRpmButton.IsEnabled)
+            if (_closing || sample == null || sample.Age >= EcSampleStaleAfter || sample == _lastLoggedMeasurement ||
+                !MeasureRpmButton.IsEnabled)
+                return;
+            if (!_resumedSavedProfile && (_fanPolicyActive || !StatusTab.IsSelected || !LastMeasurementText.IsVisible ||
+                !MeasuredFan0Text.IsVisible || !MeasuredFan1Text.IsVisible))
+                return;
+            if (_loggedAttachmentMeasurements >= 2 && (!_resumedSavedProfile ||
+                _lastLoggedMeasurement?.Age < TimeSpan.FromMinutes(1)))
                 return;
 
-            _lastLoggedMeasurementUtc = sample.ReceivedAtUtc;
+            _lastLoggedMeasurement = sample;
             _loggedAttachmentMeasurements++;
             AppLogger.Info($"Attached MEASURE UTC={sample.ReceivedAtUtc:O} mode={sample.Mode:X2}/{sample.Shadow:X2} " +
                 $"statusSelected={StatusTab.IsSelected} hardware='{HardwareSupportText.Text}' " +
                 $"rpm='{MeasuredFan0Text.Text}'/'{MeasuredFan1Text.Text}' stamp='{LastMeasurementText.Text}' " +
                 $"visible(time/fan1/fan2)={LastMeasurementText.IsVisible}/{MeasuredFan0Text.IsVisible}/{MeasuredFan1Text.IsVisible} " +
                 $"enabled(measure/test/maximum/automatic/boost)={MeasureRpmButton.IsEnabled}/{HealthTestButton.IsEnabled}/" +
-                $"{ConstantMaximumButton.IsEnabled}/{AutomaticButton.IsEnabled}/{TimedBoostButton.IsEnabled}");
+                $"{ConstantMaximumButton.IsEnabled}/{AutomaticButton.IsEnabled}/{TimedBoostButton.IsEnabled} " +
+                $"resumedProfile={_resumedSavedProfile}");
         }
 
         private TelemetrySnapshot MergeTelemetry(TelemetrySnapshot telemetry, DateTime nowUtc)

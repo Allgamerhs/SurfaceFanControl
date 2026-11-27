@@ -169,6 +169,8 @@ internal sealed class FanGuardRuntime
     private static readonly TimeSpan HeartbeatLease = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan FailsafeAcknowledgeLease = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan PipeRequestDeadline = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan SampleMutexWait = TimeSpan.FromMilliseconds(200);
+    private static readonly TimeSpan SampleWarningInterval = TimeSpan.FromSeconds(30);
     private const int ErrorNotFound = 1168;
 
     private readonly object _hardwareGate = new object();
@@ -182,6 +184,10 @@ internal sealed class FanGuardRuntime
     private string? _leaseId;
     private volatile Exception? _watchdogFailure;
     private int _watchdogTickRunning;
+    private string? _measurementStage;
+    private long _measurementStarted;
+    private long _lastBusyWarning;
+    private long _lastSlowWarning;
 
     public FanGuardRuntime(Func<long> pulseFailsafe, Func<bool> isFailsafeAlive)
     {
@@ -246,77 +252,93 @@ internal sealed class FanGuardRuntime
 
     private void ServePipe(CancellationToken cancellationToken)
     {
-        using (var pipe = new NamedPipeServerStream(
-                   FanGuardService.PipeName,
-                   PipeDirection.InOut,
-                   1,
-                   PipeTransmissionMode.Byte,
-                   PipeOptions.Asynchronous | PipeOptions.WriteThrough,
-                   4096,
-                   4096,
-                   CreatePipeSecurity()))
+        while (!cancellationToken.IsCancellationRequested)
         {
-            while (!cancellationToken.IsCancellationRequested)
+            using (var pipe = new NamedPipeServerStream(
+                       FanGuardService.PipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
+                       PipeOptions.Asynchronous | PipeOptions.WriteThrough, 4096, 4096, CreatePipeSecurity()))
             {
-                if (_watchdogFailure != null)
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    throw new InvalidOperationException("The heartbeat watchdog failed.", _watchdogFailure);
-                }
+                    if (_watchdogFailure != null)
+                        throw new InvalidOperationException("The heartbeat watchdog failed.", _watchdogFailure);
 
-                pipe.WaitForConnection();
-                try
-                {
-                    var request = ReadRequestWithDeadline(pipe);
-                    using (var writer = new StreamWriter(
-                               pipe,
-                               new UTF8Encoding(false),
-                               1024,
-                               true) { AutoFlush = true })
+                    try
                     {
-                        if (string.Equals(request, "STOP", StringComparison.OrdinalIgnoreCase) &&
-                            cancellationToken.IsCancellationRequested)
-                        {
-                            writer.WriteLine("OK|STOPPING");
-                            return;
-                        }
-
-                        if (_watchdogFailure != null)
-                        {
-                            throw new InvalidOperationException("The heartbeat watchdog failed.", _watchdogFailure);
-                        }
-
-                        try
-                        {
-                            writer.WriteLine(HandleRequest(request));
-                        }
-                        catch (Exception ex)
-                        {
-                            GuardLog.Error("Guard request failed: " + request, ex);
-                            writer.WriteLine("ERR|REQUEST_FAILED|" + Sanitize(ex.Message));
-                        }
+                        pipe.WaitForConnection();
                     }
-                }
-                catch (System.TimeoutException ex)
-                {
-                    GuardLog.Error("A pipe client exceeded the request deadline.", ex);
-                }
-                catch (InvalidDataException ex)
-                {
-                    GuardLog.Error("A pipe client sent an invalid request.", ex);
-                }
-                catch (IOException ex)
-                {
-                    GuardLog.Error("A pipe client disconnected before its request completed.", ex);
-                }
-                finally
-                {
-                    if (pipe.IsConnected)
+                    catch (IOException ex) when (IsPeerDisconnect(ex))
+                    {
+                        break;
+                    }
+
+                    try
+                    {
+                        ReplyToRequest(pipe, cancellationToken);
+                    }
+                    catch (System.TimeoutException ex)
+                    {
+                        GuardLog.Error("A pipe client exceeded the request deadline.", ex);
+                    }
+                    catch (InvalidDataException ex)
+                    {
+                        GuardLog.Error("A pipe client sent an invalid request.", ex);
+                    }
+                    catch (IOException ex)
+                    {
+                        GuardLog.Error("The pipe client disconnected.", ex);
+                        break;
+                    }
+
+                    if (!pipe.IsConnected) break;
+                    try
                     {
                         pipe.Disconnect();
+                    }
+                    catch (IOException)
+                    {
+                        // This connection cannot be reused. The next listener retains the same ACL.
+                        break;
                     }
                 }
             }
         }
+    }
+
+    private void ReplyToRequest(NamedPipeServerStream pipe, CancellationToken cancellationToken)
+    {
+        var request = ReadRequestWithDeadline(pipe);
+        string response;
+        if (string.Equals(request, "STOP", StringComparison.OrdinalIgnoreCase) &&
+            cancellationToken.IsCancellationRequested)
+        {
+            response = "OK|STOPPING";
+        }
+        else
+        {
+            if (_watchdogFailure != null)
+                throw new InvalidOperationException("The heartbeat watchdog failed.", _watchdogFailure);
+
+            try
+            {
+                response = HandleRequest(request);
+            }
+            catch (Exception ex)
+            {
+                GuardLog.Error("Guard request failed: " + request, ex);
+                response = "ERR|REQUEST_FAILED|" + Sanitize(ex.Message);
+            }
+        }
+
+        // The command has already completed. A lost reply is a connection failure only.
+        var bytes = Encoding.UTF8.GetBytes(response + "\n");
+        pipe.Write(bytes, 0, bytes.Length);
+    }
+
+    private static bool IsPeerDisconnect(IOException ex)
+    {
+        var code = ex.HResult & 0xffff;
+        return code == 109 || code == 232 || code == 233; // Broken pipe, no data, pipe not connected.
     }
 
     private string HandleRequest(string request)
@@ -395,7 +417,9 @@ internal sealed class FanGuardRuntime
                     return ReadAndValidateStatus();
 
                 case "MEASURE":
-                    var measured = ExecuteOneShot(controller => controller.ReadGuardStatus());
+                    var measured = TryExecuteOneShot(controller => controller.ReadGuardStatus(), measurement: true);
+                    if (measured == null)
+                        return "ERR|SAMPLE_BUSY|Sensor bus busy; no new measurement.";
                     if ((_maximumActive && !measured.IsMaximum) ||
                         (!_maximumActive && !measured.IsAutomatic))
                     {
@@ -424,6 +448,10 @@ internal sealed class FanGuardRuntime
 
     private void WatchdogTick(object? state)
     {
+        var stage = Volatile.Read(ref _measurementStage);
+        if (stage != null && ElapsedSince(Interlocked.Read(ref _measurementStarted), Stopwatch.GetTimestamp()) >= TimeSpan.FromSeconds(1))
+            QueueMeasurementWarning(ref _lastSlowWarning, "MEASURE has been in progress for at least one second; current stage: " + stage);
+
         if (Interlocked.Exchange(ref _watchdogTickRunning, 1) != 0)
         {
             return;
@@ -567,7 +595,11 @@ internal sealed class FanGuardRuntime
         }
     }
 
-    private T ExecuteOneShot<T>(Func<FanController, T> action)
+    private T ExecuteOneShot<T>(Func<FanController, T> action) where T : class =>
+        TryExecuteOneShot(action, measurement: false) ??
+        throw new System.TimeoutException("The global ISA/EC mutex could not be acquired.");
+
+    private T? TryExecuteOneShot<T>(Func<FanController, T> action, bool measurement) where T : class
     {
         if (action == null)
         {
@@ -579,9 +611,14 @@ internal sealed class FanGuardRuntime
             var acquired = false;
             try
             {
+                if (measurement)
+                {
+                    Interlocked.Exchange(ref _measurementStarted, Stopwatch.GetTimestamp());
+                    Volatile.Write(ref _measurementStage, "waiting for sensor bus");
+                }
                 try
                 {
-                    acquired = mutex.WaitOne(TimeSpan.FromSeconds(10), false);
+                    acquired = mutex.WaitOne(measurement ? SampleMutexWait : TimeSpan.FromSeconds(10), false);
                 }
                 catch (AbandonedMutexException)
                 {
@@ -589,10 +626,14 @@ internal sealed class FanGuardRuntime
                 }
                 if (!acquired)
                 {
-                    throw new System.TimeoutException("The global ISA/EC mutex could not be acquired.");
+                    if (measurement)
+                        QueueMeasurementWarning(ref _lastBusyWarning, "Skipped MEASURE: sensor bus remained busy for 200 ms.");
+                    return null;
                 }
 
+                if (measurement) Volatile.Write(ref _measurementStage, "checking driver identity and state");
                 DriverTrust.VerifyRunningPinnedDriver();
+                if (measurement) Volatile.Write(ref _measurementStage, "reading device sensors");
                 using (var rawIo = WinRingPortIo.Open())
                 {
                     var identity = PnpScanner.ReadExpectedAt2E(rawIo);
@@ -609,12 +650,22 @@ internal sealed class FanGuardRuntime
             }
             finally
             {
+                if (measurement) Volatile.Write(ref _measurementStage, null);
                 if (acquired)
                 {
                     mutex.ReleaseMutex();
                 }
             }
         }
+    }
+
+    private static void QueueMeasurementWarning(ref long lastWarning, string message)
+    {
+        var now = Stopwatch.GetTimestamp();
+        var previous = Interlocked.Read(ref lastWarning);
+        if (previous != 0 && ElapsedSince(previous, now) < SampleWarningInterval) return;
+        if (Interlocked.CompareExchange(ref lastWarning, now, previous) == previous)
+            ThreadPool.QueueUserWorkItem(_ => GuardLog.Info(message));
     }
 
     private string ReadAndValidateStatus()

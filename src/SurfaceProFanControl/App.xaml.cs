@@ -39,7 +39,10 @@ namespace SurfaceProFanControl
                 RunStartupRegistrationCommand(e.Args[0]);
                 return;
             }
-            if (e.Args.Length > 0 && !startupLaunch)
+            var useRunningService = !DistributionProfile.IsPortable && IsVersionAlongsideInstall();
+            var resumeProfile = useRunningService && e.Args.Length == 1 &&
+                                string.Equals(e.Args[0], "--resume-profile", StringComparison.OrdinalIgnoreCase);
+            if (e.Args.Length > 0 && !startupLaunch && !resumeProfile)
             {
                 MessageBox.Show(
                     "Bilinmeyen başlangıç seçeneği.",
@@ -50,7 +53,6 @@ namespace SurfaceProFanControl
                 return;
             }
 
-            var useRunningService = !DistributionProfile.IsPortable && IsVersionAlongsideInstall();
             if (!useRunningService && !DistributionProfile.IsPortable &&
                 !FanGuardServiceManager.IsRunningFromSecureInstall &&
                 File.Exists(FanGuardServiceManager.InstalledApplicationPath))
@@ -91,6 +93,8 @@ namespace SurfaceProFanControl
                         "portable-windows-monitor",
                         "DeviceMonitoringOnly")
                     : HardwareSupport.Detect(device.Identity);
+                if (resumeProfile && !hardwareSupport.CanControl)
+                    throw new InvalidOperationException("Kayıtlı fan profili bu donanımda uygulanamıyor.");
                 FanGuardClient? existingGuard = null;
                 if (useRunningService && hardwareSupport.CanControl)
                 {
@@ -103,6 +107,7 @@ namespace SurfaceProFanControl
 
                 var window = new MainWindow(device, hardwareSupport, startupLaunch, existingGuard);
                 if (existingGuard != null) window.StatusTab.IsSelected = true;
+                if (resumeProfile) window.ResumeSavedProfile();
                 MainWindow = window;
                 window.Show();
             }

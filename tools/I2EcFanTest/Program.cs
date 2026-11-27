@@ -12,6 +12,7 @@ using System.Security.Principal;
 using System.Threading;
 using Microsoft.Win32.SafeHandles;
 using SurfaceProFanControl.Core;
+using SurfaceProFanControl.Shared;
 
 namespace SurfaceProI2EcFanTest;
 
@@ -1194,46 +1195,31 @@ internal static class PowerStatus
 internal static class DriverTrust
 {
     private const string ExpectedSha256 = "11BD2C9F9E2397C9A16E0990E4ED2CF0679498FE0FD418A3DFDAC60B5C160EE5";
+    private static readonly string InstalledDriver = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        "SurfaceFanControl", "Privileged", "WinRing0x64.sys");
+    private static readonly string LegacyDriver = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+        "SurfaceProFanControl", "WinRing0x64.sys");
 
     public static void VerifyRunningPinnedDriver()
     {
-        using (var searcher = new ManagementObjectSearcher(
-                   "root\\cimv2",
-                   "SELECT PathName, State FROM Win32_SystemDriver WHERE Name='WinRing0_1_2_0'"))
-        using (var results = searcher.Get())
+        var path = NormalizeDriverPath(FanGuardPipeIdentity.ReadRunningKernelDriverPath("WinRing0_1_2_0"));
+        if (!string.Equals(path, InstalledDriver, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(path, LegacyDriver, StringComparison.OrdinalIgnoreCase))
         {
-            foreach (ManagementObject driver in results)
-            {
-                using (driver)
-                {
-                    var state = Convert.ToString(driver["State"])?.Trim() ?? string.Empty;
-                    if (!string.Equals(state, "Running", StringComparison.OrdinalIgnoreCase))
-                    {
-                        throw new InvalidOperationException("The pinned WinRing0 driver service is not running.");
-                    }
-
-                    var path = NormalizeDriverPath(Convert.ToString(driver["PathName"]));
-                    if (!File.Exists(path))
-                    {
-                        throw new FileNotFoundException("The running WinRing0 service path does not exist.", path);
-                    }
-
-                    string hash;
-                    using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
-                    using (var sha256 = SHA256.Create())
-                    {
-                        hash = BitConverter.ToString(sha256.ComputeHash(stream)).Replace("-", string.Empty);
-                    }
-                    if (!string.Equals(hash, ExpectedSha256, StringComparison.OrdinalIgnoreCase))
-                    {
-                        throw new InvalidOperationException("The running WinRing0 driver SHA-256 value is not pinned.");
-                    }
-                    return;
-                }
-            }
+            throw new InvalidDataException("The running driver is outside the supported installation directories.");
         }
 
-        throw new InvalidOperationException("The pinned WinRing0 driver service was not found.");
+        using (var stream = File.OpenRead(path))
+        using (var sha256 = SHA256.Create())
+        {
+            var hash = BitConverter.ToString(sha256.ComputeHash(stream)).Replace("-", string.Empty);
+            if (!string.Equals(hash, ExpectedSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("The running WinRing0 driver SHA-256 value is not pinned.");
+            }
+        }
     }
 
     private static string NormalizeDriverPath(string? rawPath)
