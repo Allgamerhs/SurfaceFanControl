@@ -84,6 +84,37 @@ try {
         $migrated.CloseToTray -and $migrated.StartupDelaySeconds -eq 15) 'Legacy settings or fallback defaults were lost.'
     $store.Save($settings)
     Assert-True (($store.Load() | ConvertTo-Json -Compress) -eq ($settings | ConvertTo-Json -Compress)) 'Registry round trip failed.'
+
+    $privateInstance = [Reflection.BindingFlags]'Instance,NonPublic'
+    $windowType = [SurfaceProFanControl.MainWindow]
+    $handler = $windowType.GetMethod('ImportProfileButton_Click', $privateInstance)
+    $copy = $settings.GetType().GetMethod('Copy', $privateInstance)
+    $compiled = [BitConverter]::ToString($handler.GetMethodBody().GetILAsByteArray())
+    # Match the emitted call/callvirt and stfld instructions for these specific members in order.
+    $members = @($copy, $exchange.GetMethod('Import'), $storeType.GetMethod('Save'),
+        $windowType.GetField('_settings', $privateInstance), $windowType.GetMethod('MarkPolicySelectionChanged', $privateInstance))
+    $last = -1
+    foreach ($member in $members) {
+        $opcode = if ($member -is [Reflection.FieldInfo]) { '7D' } else { '28|6F' }
+        $token = [BitConverter]::ToString([BitConverter]::GetBytes($member.MetadataToken))
+        $match = [regex]::Match($compiled, "(?:^|-)(?:$opcode)-$token(?=-|$)")
+        Assert-True ($match.Success -and $match.Index -gt $last) "Import handler order failed at $($member.Name)."
+        $last = $match.Index
+    }
+    $invalidStore = [Activator]::CreateInstance($storeType, [Reflection.BindingFlags]'Instance,NonPublic',
+        $null, [object[]]@(('x' * 256)), $null)
+    $current = [SurfaceProFanControl.Infrastructure.UserSettings]::new()
+    $before = $current | ConvertTo-Json -Compress
+    $rejected = $false
+    $candidate = $copy.Invoke($current, @())
+    $exchange::Import($path, $candidate)
+    try { $invalidStore.Save($candidate); $current = $candidate }
+    catch { $rejected = $_.Exception.GetBaseException() -is [ArgumentException] }
+    Assert-True ($rejected -and ($current | ConvertTo-Json -Compress) -eq $before) 'Failed persistence changed the active profile.'
+    $store.Save($candidate)
+    $current = $candidate
+    Assert-True ($current.UsePowerProfiles -and !$current.CustomCurveEnabled -and
+        ($current | ConvertTo-Json -Compress) -eq ($store.Load() | ConvertTo-Json -Compress)) 'Imported active and saved profiles differ.'
     Write-Output "PASS: $checks profile and settings checks"
 } finally {
     [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKey($keyPath, $false)
